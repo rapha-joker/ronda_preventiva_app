@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#081f5c" />
   <title>Ronda Preventiva YDUQS</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
       --navy:#081f5c; --navy2:#12327d; --cyan:#4db7cc; --bg:#f4f7fb; --card:#fff;
@@ -198,7 +199,8 @@
       roundId: '',
       answers: {},
       startedAt: '',
-      deviceMode: ''
+      deviceMode: '',
+      validacaoChecklist: ''
     };
 
     let currentStep = 1;
@@ -279,11 +281,11 @@
           <div class="grid grid-2">
             <div class="field">
               <label for="tecnico">Nome do técnico</label>
-              <input id="tecnico" type="text" maxlength="120" placeholder="Ex.: Sandro Oliveira" value="${escapeHtml(formState.tecnico)}" />
+              <input id="tecnico" type="text" maxlength="120" placeholder="Ex.: Raphael Amaral" value="${escapeHtml(formState.tecnico)}" />
             </div>
             <div class="field">
               <label for="unidade">Unidade</label>
-              <input id="unidade" type="text" maxlength="120" placeholder="Ex.: Montreal" value="${escapeHtml(formState.unidade)}" />
+              <input id="unidade" type="text" maxlength="120" placeholder="Ex.: Rio de Janeiro" value="${escapeHtml(formState.unidade)}" />
             </div>
           </div>
         </div>
@@ -291,14 +293,14 @@
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Assinatura e evidências</h3>
-              <div class="muted">Assine o relatório e, caso exista, anexe evidências.</div>
+              <h3>Fieldtask e evidências</h3>
+              <div class="muted">CInforme o número da Fieldtask e, em caso de erro, anexe as evidências.</div>
             </div>
           </div>
           <div class="grid grid-2">
             <div class="field">
               <label for="assinatura">Assinatura do técnico</label>
-              <input id="assinatura" type="text" maxlength="120" placeholder="Ex.: Sandro dos Santos Oliveira" value="${escapeHtml(formState.assinatura)}" />
+              <input id="assinatura" type="text" maxlength="120" placeholder="Ex.: FIELDTASK0094643" value="${escapeHtml(formState.assinatura)}" />
             </div>
             <div class="field">
               <label for="fotos">Fotos de evidência (opcional, até 4)</label>
@@ -529,6 +531,7 @@
         tecnico: formState.tecnico,
         unidade: formState.unidade,
         assinatura: formState.assinatura,
+        validacaoChecklist: formState.validacaoChecklist,
         ronda: round?.name || '',
         geradoEm: formState.startedAt || new Date().toISOString(),
         perguntas: round?.questions.map((q, i) => {
@@ -573,6 +576,25 @@
             <div class="report-item"><strong>Data/Hora</strong><div>${new Date(report.geradoEm).toLocaleString('pt-BR')}</div></div>
             <div class="report-item"><strong>Ronda</strong><div>${escapeHtml(report.ronda)}</div></div>
             <div class="report-item"><strong>Assinatura</strong><div>${escapeHtml(report.assinatura || '-')}</div></div>
+            <div class="report-item"><strong>Validação do Checklist</strong><div>${escapeHtml(formState.validacaoChecklist || '-')}</div></div>
+          </div>
+        </div>
+
+        <div class="report-box">
+          <div class="section-title">
+            <div>
+              <h3>Validação do Checklist</h3>
+              <div class="muted">Informe a validação final antes de gerar os arquivos.</div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="validacaoChecklist">Validação do Checklist</label>
+            <select id="validacaoChecklist">
+              <option value="">Selecione</option>
+              <option value="Aprovado" ${formState.validacaoChecklist === 'Aprovado' ? 'selected' : ''}>Aprovado</option>
+              <option value="Aprovado com ressalvas" ${formState.validacaoChecklist === 'Aprovado com ressalvas' ? 'selected' : ''}>Aprovado com ressalvas</option>
+              <option value="Reprovado" ${formState.validacaoChecklist === 'Reprovado' ? 'selected' : ''}>Reprovado</option>
+            </select>
           </div>
         </div>
 
@@ -595,15 +617,27 @@
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <button class="btn-soft" id="btnSave" type="button">SALVAR</button>
             <button class="btn-primary" id="btnPdf" type="button">GERAR PDF</button>
+            <button class="btn-secondary" id="btnExcel" type="button">GERAR EXCEL</button>
+            <button class="btn-secondary" id="btnCsv" type="button">GERAR CSV</button>
             <button class="btn-secondary" id="btnChecklist" type="button">Novo checklist</button>
             <button class="btn-danger" id="btnRestart" type="button">Reiniciar processo completo</button>
           </div>
         </div>
       `;
 
+      const validacaoEl = screen4.querySelector('#validacaoChecklist');
+      if (validacaoEl) {
+        validacaoEl.addEventListener('change', e => {
+          formState.validacaoChecklist = e.target.value;
+          renderScreen4();
+        });
+      }
+
       screen4.querySelector('#back3').addEventListener('click', () => showStep(3));
       screen4.querySelector('#btnSave').addEventListener('click', saveReportToChosenFolder);
       screen4.querySelector('#btnPdf').addEventListener('click', generatePdfDownload);
+      screen4.querySelector('#btnExcel').addEventListener('click', generateExcelDownload);
+      screen4.querySelector('#btnCsv').addEventListener('click', generateCsvDownload);
       screen4.querySelector('#btnChecklist').addEventListener('click', newChecklist);
       screen4.querySelector('#btnRestart').addEventListener('click', resetAll);
     }
@@ -615,6 +649,15 @@
       const nomeRonda = (round?.name || 'Ronda').trim();
       const nomeTecnico = (formState.tecnico || 'Tecnico').trim();
       return `${nomeRonda} - ${data} - ${nomeTecnico}.pdf`;
+    }
+
+    function makeBaseFileName() {
+      const round = getSelectedRound();
+      const d = new Date();
+      const data = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+      const nomeRonda = sanitizeFileNamePart((round?.name || 'Ronda').trim());
+      const nomeTecnico = sanitizeFileNamePart((formState.tecnico || 'Tecnico').trim());
+      return `${nomeRonda} - ${data} - ${nomeTecnico}`;
     }
 
     function buildProfessionalPdf() {
@@ -669,10 +712,12 @@
         ensureSpace(8);
         doc.setFont('helvetica','bold');
         doc.setFontSize(10);
+        const labelWidth = Math.max(30, Math.min(60, doc.getTextWidth(label) + 4));
         doc.text(label, margin, y);
         doc.setFont('helvetica','normal');
-        const lines = doc.splitTextToSize(String(value || '-'), pageWidth - (margin * 2) - 30);
-        doc.text(lines, margin + 28, y);
+        const valueX = margin + labelWidth;
+        const lines = doc.splitTextToSize(String(value || '-'), pageWidth - margin - valueX);
+        doc.text(lines, valueX, y);
         y += Math.max(6, lines.length * 4.8);
       };
 
@@ -707,6 +752,7 @@
       labelValue('Unidade:', report.unidade);
       labelValue('Dispositivo:', formState.deviceMode);
       labelValue('Ronda:', report.ronda);
+      labelValue('Validação do Checklist:', report.validacaoChecklist || '-');
       if (report.ronda === 'Ronda nas Salas de Reunião') {
         const sala = report.perguntas.find(p => p.pergunta === 'Qual a sala de reunião?')?.resposta || '-';
         labelValue('Sala de reunião:', sala);
@@ -743,8 +789,89 @@
       return doc;
     }
 
+
+    function ensureValidationSelected() {
+      if (!formState.validacaoChecklist) {
+        alert('Selecione a Validação do Checklist antes de gerar o arquivo.');
+        return false;
+      }
+      return true;
+    }
+
+    function getExportRows() {
+      const report = buildReportObject();
+      return report.perguntas.map(item => ({
+        Técnico: report.tecnico,
+        Unidade: report.unidade,
+        Ronda: report.ronda,
+        'Validação do Checklist': report.validacaoChecklist || '',
+        'Data/Hora': new Date(report.geradoEm).toLocaleString('pt-BR'),
+        Pergunta: item.pergunta,
+        Resposta: item.resposta || '',
+        Observação: item.observacao || '',
+        'Campos adicionais': (item.camposAdicionais || []).map(extra => `${extra.campo}: ${extra.valor || ''}`).join(' | '),
+        Assinatura: report.assinatura || ''
+      }));
+    }
+
+    function sanitizeFileNamePart(value) {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\\/:*?"<>|]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim() || 'Arquivo';
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+    }
+
+    function generateExcelDownload() {
+      if (!ensureValidationSelected()) return;
+      if (!(window.XLSX && window.XLSX.utils)) {
+        alert('A biblioteca de Excel não foi carregada. Verifique sua conexão e tente novamente.');
+        return;
+      }
+      const rows = getExportRows();
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Ronda');
+      XLSX.writeFile(workbook, `${makeBaseFileName()}.xlsx`);
+    }
+
+    function escapeCsvValue(value) {
+      const text = String(value ?? '');
+      if (/[;"\n\r]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    }
+
+    function generateCsvDownload() {
+      if (!ensureValidationSelected()) return;
+      const rows = getExportRows();
+      if (!rows.length) {
+        alert('Não há dados para exportar.');
+        return;
+      }
+      const headers = Object.keys(rows[0]);
+      const lines = [
+        headers.map(escapeCsvValue).join(';'),
+        ...rows.map(row => headers.map(header => escapeCsvValue(row[header])).join(';'))
+      ];
+      const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      downloadBlob(blob, `${makeBaseFileName()}.csv`);
+    }
+
     async function saveReportToChosenFolder() {
       try {
+        if (!ensureValidationSelected()) return;
         const doc = buildProfessionalPdf();
         if (!doc) return;
         const filename = makeSmartFileName();
@@ -785,6 +912,7 @@
     }
 
     function generatePdfDownload() {
+      if (!ensureValidationSelected()) return;
       const doc = buildProfessionalPdf();
       if (!doc) return;
       doc.save(makeSmartFileName());
@@ -793,6 +921,7 @@
     function newChecklist() {
       formState.roundId = '';
       formState.answers = {};
+      formState.validacaoChecklist = '';
       showStep(2);
       renderScreen2();
       renderScreen3();
@@ -808,6 +937,7 @@
       formState.roundId = '';
       formState.answers = {};
       formState.startedAt = '';
+      formState.validacaoChecklist = '';
       detectDevice();
       renderScreen1();
       renderScreen2();
