@@ -61,12 +61,16 @@
     .choice input { position:absolute; opacity:0; pointer-events:none; }
     .choice label { display:block; text-align:center; border:1px solid var(--line); border-radius:14px; padding:12px 14px; background:#fff; min-height:48px; cursor:pointer; }
     .choice input:checked + label { background:#eef4ff; border-color:#a9c4ff; box-shadow:0 0 0 4px rgba(80,132,255,.10); }
+    .check-flag-row { display:flex; align-items:flex-start; gap:10px; border:1px solid var(--line); border-radius:14px; padding:12px 14px; background:#fff; cursor:pointer; text-align:left; }
+    .check-flag-row input[type="checkbox"] { position:static; opacity:1; pointer-events:auto; width:18px; height:18px; margin:2px 0 0; accent-color:var(--navy); flex:0 0 auto; }
+    .check-flag-row span { flex:1; line-height:1.45; }
+    .check-flag-row.checked { background:#eef4ff; border-color:#a9c4ff; box-shadow:0 0 0 4px rgba(80,132,255,.10); }
     .report-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
     .report-item { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; }
     .preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; margin-top:12px; }
     .signature-wrap { border:1px solid var(--line); border-radius:16px; padding:12px; background:#fbfdff; }
     .signature-canvas-wrap { border:1px dashed var(--line); border-radius:14px; background:#fff; overflow:hidden; }
-    #signatureCanvas { display:block; width:100%; height:220px; touch-action:none; background:#fff; }
+    #signatureCanvas { display:block; width:100%; height:220px; touch-action:none; background:#fff; cursor:crosshair; user-select:none; -webkit-user-select:none; }
     .signature-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
     .hidden { display:none !important; }
     @media (max-width:920px) {
@@ -84,7 +88,10 @@
       button,input[type="text"],textarea,select,input[type="file"] { min-height:48px; font-size:16px; }
       #signatureCanvas { height:200px; }
     }
-  </style>
+  
+    .field-error{ border:2px solid #cf3b2f !important; box-shadow:0 0 0 3px rgba(207,59,47,.12) !important; }
+    .validation-message{ color:#cf3b2f; font-size:.9rem; margin-top:6px; }
+</style>
 </head>
 <body>
   <div class="app">
@@ -121,17 +128,22 @@
 
   <script>
     const LOGO = '';
+    
     const ROUNDS = [
       {
         id: 'cpd',
         name: 'CPD',
         description: 'Verificação do ambiente, ativos e organização do CPD.',
         questions: [
-          { id: 'cpd_1', text: 'O ar condicionado está funcionando?', kind: 'yesno', negativeObservation: 'Descreva o erro encontrado' },
-          { id: 'cpd_2', text: 'A temperatura do ambiente está OK?', kind: 'yesno', negativeObservation: 'Descreva o erro encontrado' },
-          { id: 'cpd_3', text: 'Os ativos de rede estão ligados?', kind: 'yesno', negativeObservation: 'Descreva o erro encontrado' },
-          { id: 'cpd_4', text: 'O cabeamento está organizado?', kind: 'yesno', negativeObservation: 'Descreva o erro encontrado' },
-          { id: 'cpd_5', text: 'O local está limpo?', kind: 'yesno', negativeObservation: 'Descreva o erro encontrado' }
+          { id: 'cpd_0', text: 'Andar', kind: 'text_required', placeholder: 'Ex.: 3º andar' },
+          { id: 'cpd_00', text: 'Tempo total de ronda (min)', kind: 'text_required', placeholder: 'Ex.: 25' },
+          { id: 'cpd_1', text: 'Ar-condicionado operante e sem alarmes (temperatura/umidade adequadas)?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'cpd_2', text: 'Nobreaks (UPS) sem alarmes; carga e autonomia dentro do esperado?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'cpd_3', text: 'Switches com LEDs normais, sem portas com erro?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'cpd_4', text: 'Servidores ligados, sem alertas?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'cpd_5', text: 'Organização e limpeza do ambiente (sem obstruções, cabos identificados)?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'cpd_6', text: 'Observações', kind: 'textarea_optional', placeholder: 'Descreva observações adicionais' },
+          { id: 'cpd_7', text: 'Riscos/Planos de ação', kind: 'textarea_optional', placeholder: 'Descreva riscos e planos de ação' }
         ]
       },
       {
@@ -139,53 +151,75 @@
         name: 'Ronda Setorial',
         description: 'Avaliação do ambiente dos andares e problemas recorrentes.',
         questions: [
-          { id: 'set_1', text: 'A internet nos andares está estável?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'set_2', text: 'A organização dos cabos está OK?', kind: 'tri', negativeObservation: 'Descreva o problema encontrado' },
-          {
-            id: 'set_3',
-            text: 'Foi encontrado algum equipamento que não deveria estar no local?',
-            kind: 'yesno_followup',
-            followUps: [
-              { trigger: 'Sim', label: 'Qual equipamento ou situação fora do comum foi encontrada?', type: 'textarea', key: 'equipamento_fora' }
-            ]
-          },
-          {
-            id: 'set_4',
-            text: 'Houve alguma reclamação sobre um erro recorrente ou em massa?',
-            kind: 'yesno_followup',
-            followUps: [
-              { trigger: 'Sim', label: 'Descreva o problema relatado', type: 'textarea', key: 'descricao_problema' },
-              { trigger: 'Sim', label: 'Há chamado aberto? Informe o número do chamado ou dos chamados', type: 'text', key: 'chamados_abertos' },
-              { trigger: 'Sim', label: 'O time responsável já foi acionado? Qual time é esse?', type: 'text', key: 'time_acionado' }
-            ]
-          }
+          { id: 'set_0', text: 'Andar', kind: 'text_required', placeholder: 'Ex.: 3º andar' },
+          { id: 'set_00', text: 'Tempo total de ronda (min)', kind: 'text_required', placeholder: 'Ex.: 25' },
+          { id: 'set_wifi_section', text: 'WIFI', kind: 'section' },
+          { id: 'set_wifi_1', text: 'Identificar problemas de conexão por setor (usuários e dispositivos afetados). Houve alguma ocorrência?', kind: 'yesno', observationTrigger: 'Sim', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_wifi_2', text: 'Avaliar comportamentos anormais de acesso a sistemas (latência/perdas). Houve alguma ocorrência?', kind: 'yesno', observationTrigger: 'Sim', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_wifi_3', text: 'Teste de velocidade e sinal em pontos críticos (RSSI/SNR). O teste foi satisfatório?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_wifi_obs', text: 'Observações', kind: 'textarea_optional', placeholder: 'Descreva observações sobre o WIFI' },
+          { id: 'set_wifi_pred_section', text: 'Itens preditivos sugeridos', kind: 'section_minor' },
+          { id: 'set_wifi_pred', text: 'Itens preditivos sugeridos', kind: 'checkboxes_optional', options: ['Checar utilização de canais e interferências (co-canal/adjacente)', 'Verificar potência/transmissão e cobertura (heatmap rápido)', 'Revisar política de expiração de senhas/certificados (WPA2-Enterprise/802.1X)'] },
+          { id: 'set_wifi_ajustes', text: 'Ajustes Recomendados', kind: 'textarea_optional', placeholder: 'Descreva os ajustes recomendados' },
+          { id: 'set_prn_section', text: 'IMPRESSORAS', kind: 'section' },
+          { id: 'set_prn_nome', text: 'Nome da impressora', kind: 'text_required', placeholder: 'Ex.: HP LaserJet - Secretaria' },
+          { id: 'set_prn_1', text: 'Status: ligada e sem erros no painel?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_prn_2', text: 'Tipo de conexão: rede cabeada com IP acessível (ping)?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_prn_3', text: 'Qualidade de impressão (teste de página) sem falhas/listras?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_prn_4', text: 'Papel corretamente carregado e sem atolamentos?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_prn_5', text: 'Nível de toner/tinta acima de 20% ou kit de reposição disponível?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'set_prn_6', text: 'Status do coletor NDD', kind: 'checkboxes_optional', options: ['Comunicação', 'Contador ativo'] },
+          { id: 'set_prn_pred_section', text: 'Itens preditivos sugeridos', kind: 'section_minor' },
+          { id: 'set_prn_pred', text: 'Itens preditivos sugeridos', kind: 'checkboxes_optional', options: ['Conferir estoque mínimo de suprimentos (toner, tambor, fusor)'] },
+          { id: 'set_prn_chamados', text: 'Chamados/Peças', kind: 'textarea_optional', placeholder: 'Descreva chamados abertos e peças necessárias' }
         ]
       },
       {
         id: 'salas',
-        name: 'Ronda nas Salas de Reunião',
-        description: 'Inspeção funcional de Poly, Teams, áudio e vídeo.',
+        name: 'Ronda Sala de Reunião',
+        description: 'Inspeção física, lógica e preditiva dos recursos da sala.',
         questions: [
           { id: 'sal_0', text: 'Qual a sala de reunião?', kind: 'text_required', placeholder: 'Ex.: Sala Rio de Janeiro' },
-          { id: 'sal_1', text: 'A Polycon está ligada?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'sal_2', text: 'A Polycon está conectada na internet?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'sal_3', text: 'O usuário Teams está conectado?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'sal_4', text: 'O vídeo da Polycon está normal na sala?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'sal_5', text: 'O áudio da Polycon está normal na sala?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'sal_6', text: 'O vídeo da Polycon está normal para o ouvinte?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          { id: 'sal_7', text: 'O áudio da Polycon está normal para o ouvinte?', kind: 'yesno', negativeObservation: 'Descreva o problema encontrado' },
-          {
-            id: 'sal_8',
-            text: 'Algum problema não listado foi encontrado na Polycon?',
-            kind: 'yesno_followup',
-            followUps: [
-              { trigger: 'Sim', label: 'Liste os problemas encontrados', type: 'textarea', key: 'problemas_nao_listados' },
-              { trigger: 'Sim', label: 'Liste as soluções aplicadas', type: 'textarea', key: 'solucoes_aplicadas' }
-            ]
-          }
+          { id: 'sal_00', text: 'Andar', kind: 'text_required', placeholder: 'Ex.: 3º andar' },
+          { id: 'sal_000', text: 'Tempo total de ronda (min)', kind: 'text_required', placeholder: 'Ex.: 25' },
+
+          { id: 'sal_section', text: 'SALA DE REUNIÃO', kind: 'section' },
+          { id: 'sal_fis_section', text: 'Funcionamento Físico', kind: 'section_minor' },
+          { id: 'sal_fis_1', text: 'Equipamento de videoconferência liga e inicializa sem alertas?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_fis_2', text: 'Câmera apresentou problemas?', kind: 'yesno', observationTrigger: 'Sim', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_fis_3', text: 'TV/Monitores ligam, sem pixels mortos ou manchas?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_fis_4', text: 'Rede cabeada (ponto RJ45) com link e LED ativo?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_fis_5', text: 'Integridade dos periféricos (câmeras, microfones, caixas de som, cabos HDMI/USB):', kind: 'custom_options', options: ['Boa', 'Razoável', 'Ruim'], observationTriggers: ['Razoável', 'Ruim'], negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_fis_6', text: 'Organização dos cabos e disponibilidade de adaptadores (HDMI/USB-C/DP):', kind: 'custom_options', options: ['Boa', 'Razoável', 'Ruim'], observationTriggers: ['Razoável', 'Ruim'], negativeObservation: 'Descreva o problema encontrado' },
+
+          { id: 'sal_log_section', text: 'Funcionamento Lógico', kind: 'section_minor' },
+          { id: 'sal_log_1', text: 'Windows ativado e atualizado (sem alertas de ativação)?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_log_2', text: 'Conexão do equipamento de videoconferência (Teams/Zoom/Webex) testada. Apresentou problemas?', kind: 'yesno', observationTrigger: 'Sim', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_log_3', text: 'Áudio: teste de microfone/alto-falantes:', kind: 'custom_options', options: ['OK', 'Não OK'], observationTriggers: ['Não OK'], negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_log_4', text: 'Vídeo: câmera reconhecida e com qualidade adequada?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_log_5', text: 'Teste de compartilhamento de tela (HDMI e sem fio, se aplicável):', kind: 'custom_options', options: ['OK', 'Não OK', 'Não se aplica'], observationTriggers: ['Não OK'], negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_log_6', text: 'Teste de compartilhamento via Clickshare:', kind: 'custom_options', options: ['OK', 'Não OK'], observationTriggers: ['Não OK'], negativeObservation: 'Descreva o problema encontrado', onlyIfBuilding: 'Montreal' },
+          { id: 'sal_log_7', text: 'Teste de uso do Scribe:', kind: 'custom_options', options: ['OK', 'Não OK'], observationTriggers: ['Não OK'], negativeObservation: 'Descreva o problema encontrado', onlyIfBuilding: 'Montreal' },
+
+          { id: 'sal_pred_section', text: 'Itens preditivos sugeridos', kind: 'section_minor' },
+          { id: 'sal_pred_flags', text: 'Itens preditivos sugeridos', kind: 'checkboxes_optional', options: ['Verificar firmware de codecs/câmeras/TVs e agendar atualização se necessário', 'Inspecionar conectores e cabos por desgaste/folga (substituir preventivamente)'] },
+          { id: 'sal_pred_fotos', text: 'Registrar fotos de anomalias físicas para histórico', kind: 'photo_upload_optional' },
+          { id: 'sal_acoes', text: 'Ações/Peças a providenciar', kind: 'textarea_optional', placeholder: 'Descreva ações e peças a providenciar' },
+
+          { id: 'sal_prn_section', text: 'IMPRESSORAS', kind: 'section' },
+          { id: 'sal_prn_1', text: 'Status: está ligada e sem erros no painel?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_prn_2', text: 'Tipo de conexão: rede cabeada com IP acessível (ping)?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_prn_3', text: 'Qualidade de impressão (teste de página) sem falhas/listras?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_prn_4', text: 'Papel corretamente carregado e sem atolamentos?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_prn_5', text: 'Nível de toner/tinta acima de 20% ou kit de reposição disponível?', kind: 'yesno', observationTrigger: 'Não', negativeObservation: 'Descreva o problema encontrado' },
+          { id: 'sal_prn_6', text: 'Status do coletor NDD', kind: 'checkboxes_optional', options: ['Comunicação', 'Contador ativo'] },
+          { id: 'sal_prn_pred_section', text: 'Itens preditivos sugeridos', kind: 'section_minor' },
+          { id: 'sal_prn_pred', text: 'Itens preditivos sugeridos', kind: 'checkboxes_optional', options: ['Conferir estoque mínimo de suprimentos (toner, tambor, fusor)'] },
+          { id: 'sal_prn_chamados', text: 'Chamados/Peças', kind: 'textarea_optional', placeholder: 'Descreva chamados e peças necessárias' }
         ]
       }
     ];
+
 
     const formState = {
       tecnico: '',
@@ -202,7 +236,6 @@
     };
 
     let currentStep = 1;
-    let signaturePadReady = false;
     let isDrawing = false;
     let lastPoint = null;
 
@@ -274,6 +307,7 @@
       return ROUNDS.find(r => r.id === formState.roundId) || null;
     }
 
+    
     function renderScreen1() {
       screen1.innerHTML = `
         <div class="section-title">
@@ -300,8 +334,8 @@
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Fieldtask e evidências</h3>
-              <div class="muted">Informe o número da Fieldtask e, em caso de erro, anexe as evidências.</div>
+              <h3>Fieldtask</h3>
+              <div class="muted">Informe o número da Fieldtask para validação do checklist.</div>
             </div>
           </div>
           <div class="grid grid-2">
@@ -309,12 +343,7 @@
               <label for="assinatura">Validação do Checklist (Fieldtask)</label>
               <input id="assinatura" type="text" maxlength="120" placeholder="Ex.: FIELDTASK0094643" value="${escapeHtml(formState.assinatura)}" />
             </div>
-            <div class="field">
-              <label for="fotos">Fotos de evidência (opcional, até 4)</label>
-              <input id="fotos" type="file" accept="image/*" multiple />
-            </div>
           </div>
-          <div id="fotosPreview" class="preview-grid"></div>
         </div>
 
         <div class="actions">
@@ -326,8 +355,10 @@
       screen1.querySelector('#tecnico').addEventListener('input', e => formState.tecnico = e.target.value);
       screen1.querySelector('#unidade').addEventListener('input', e => formState.unidade = e.target.value);
       screen1.querySelector('#assinatura').addEventListener('input', e => formState.assinatura = e.target.value);
-      screen1.querySelector('#fotos').addEventListener('change', handlePhotos);
-      renderPhotoPreview();
+
+      const fotosPreview = document.getElementById('fotosPreview');
+      if (fotosPreview) renderPhotoPreview();
+
       screen1.querySelector('#toStep2').addEventListener('click', () => {
         if (!formState.tecnico.trim() || !formState.unidade.trim()) {
           alert('Preencha o nome do técnico e a unidade.');
@@ -337,6 +368,7 @@
         showStep(2);
       });
     }
+
 
     function handlePhotos(e) {
       const files = Array.from(e.target.files || []).slice(0, 4);
@@ -427,8 +459,26 @@
       });
     }
 
+    
+    function shouldShowQuestion(question) {
+      if (!question.onlyIfBuilding) return true;
+      return String(formState.unidade || '').trim().toLowerCase() === String(question.onlyIfBuilding).trim().toLowerCase();
+    }
+
     function renderQuestion(question, index) {
-      const ans = formState.answers[question.id] || { answer:'', notes:'', extra:{} };
+      if (!shouldShowQuestion(question)) return '';
+      const ans = formState.answers[question.id] || { answer:'', notes:'', extra:{}, files:[] };
+
+      if (question.kind === 'section' || question.kind === 'section_minor') {
+        return `<div class="question" data-question="${question.id}" style="border-style:dashed; background:${question.kind === 'section' ? 'rgba(8,31,92,.04)' : 'rgba(77,183,204,.08)'};">
+          <div class="question-head">
+            <div style="width:100%;">
+              <div class="legend" style="font-size:${question.kind === 'section' ? '1.05rem' : '.98rem'}; text-transform:${question.kind === 'section' ? 'uppercase' : 'none'}; letter-spacing:${question.kind === 'section' ? '.04em' : 'normal'};">${escapeHtml(question.text)}</div>
+            </div>
+          </div>
+        </div>`;
+      }
+
       if (question.kind === 'text_required') {
         return `<div class="question" data-question="${question.id}">
           <div class="question-head"><div class="q-num">${index+1}</div><div><div class="legend">${escapeHtml(question.text)}</div><div class="muted" style="font-size:.92rem;">Preencha o campo abaixo.</div></div></div>
@@ -439,8 +489,55 @@
         </div>`;
       }
 
-      const options = question.kind === 'tri' ? ['Sim','Não','Não se aplica'] : ['Sim','Não'];
-      const showObs = (question.kind === 'yesno' || question.kind === 'tri') && ans.answer === 'Não';
+      if (question.kind === 'textarea_optional') {
+        return `<div class="question" data-question="${question.id}">
+          <div class="question-head"><div class="q-num">${index+1}</div><div><div class="legend">${escapeHtml(question.text)}</div><div class="muted" style="font-size:.92rem;">Preencha o campo abaixo.</div></div></div>
+          <div class="field">
+            <label for="textarea_${question.id}">${escapeHtml(question.text)}</label>
+            <textarea id="textarea_${question.id}" placeholder="${escapeHtml(question.placeholder || 'Digite aqui')}">${escapeHtml(ans.answer || '')}</textarea>
+          </div>
+        </div>`;
+      }
+
+      if (question.kind === 'photo_upload_optional') {
+        const files = Array.isArray(ans.files) ? ans.files : [];
+        return `<div class="question" data-question="${question.id}">
+          <div class="question-head"><div class="q-num">${index+1}</div><div><div class="legend">${escapeHtml(question.text)}</div><div class="muted" style="font-size:.92rem;">Anexe fotos para registro histórico.</div></div></div>
+          <div class="field">
+            <label for="photo_${question.id}">${escapeHtml(question.text)}</label>
+            <input id="photo_${question.id}" type="file" accept="image/*" multiple />
+          </div>
+          <div class="preview-grid" id="preview_${question.id}">
+            ${files.length ? files.map(src => `<img src="${src}" alt="Foto anexada" style="width:100%; height:92px; object-fit:cover; border-radius:12px; border:1px solid var(--line);" />`).join('') : `<div class="report-item muted">Nenhuma foto adicionada.</div>`}
+          </div>
+        </div>`;
+      }
+
+      if (question.kind === 'checkboxes_optional') {
+        const values = Array.isArray(ans.answer) ? ans.answer : [];
+        return `<div class="question" data-question="${question.id}">
+          <div class="question-head"><div class="q-num">${index+1}</div><div><div class="legend">${escapeHtml(question.text)}</div><div class="muted" style="font-size:.92rem;">Marque as opções aplicáveis.</div></div></div>
+          <div class="choice-group" style="display:block;">
+            ${(question.options || []).map(opt => {
+              const inputId = `${question.id}_${slugify(opt)}`;
+              const checkedClass = values.includes(opt) ? 'checked' : '';
+              return `<div class="choice" style="margin-bottom:10px;"><label class="check-flag-row ${checkedClass}" for="${inputId}"><input id="${inputId}" type="checkbox" data-checkbox-group="${question.id}" value="${escapeHtml(opt)}" ${values.includes(opt) ? 'checked' : ''} /><span>${escapeHtml(opt)}</span></label></div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }
+
+      const options = question.kind === 'tri'
+        ? ['Sim','Não','Não se aplica']
+        : question.kind === 'custom_options'
+          ? (question.options || [])
+          : ['Sim','Não'];
+
+      const observationTriggers = Array.isArray(question.observationTriggers)
+        ? question.observationTriggers
+        : [question.observationTrigger || 'Não'];
+
+      const showObs = ['yesno', 'tri', 'custom_options'].includes(question.kind) && observationTriggers.includes(ans.answer);
       const followUps = (question.followUps || []).filter(f => f.trigger === ans.answer);
 
       return `<div class="question" data-question="${question.id}">
@@ -448,7 +545,7 @@
         <div class="choice-group">
           ${options.map(opt => {
             const inputId = `${question.id}_${slugify(opt)}`;
-            return `<div class="choice"><input id="${inputId}" type="radio" name="q_${question.id}" value="${opt}" ${ans.answer === opt ? 'checked' : ''} /><label for="${inputId}">${opt}</label></div>`;
+            return `<div class="choice"><input id="${inputId}" type="radio" name="q_${question.id}" value="${escapeHtml(opt)}" ${ans.answer === opt ? 'checked' : ''} /><label for="${inputId}">${escapeHtml(opt)}</label></div>`;
           }).join('')}
         </div>
         <div class="field ${showObs ? '' : 'hidden'}" style="margin-top:14px;">
@@ -467,29 +564,66 @@
       </div>`;
     }
 
+
     function bindQuestionEvents(round) {
-      round.questions.forEach(question => {
+      round.questions.filter(shouldShowQuestion).forEach(question => {
         const textInput = screen3.querySelector(`#text_${question.id}`);
         if (textInput) {
           textInput.addEventListener('input', e => {
-            const prev = formState.answers[question.id] || { notes:'', extra:{} };
-            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {} };
+            e.target.classList.remove('field-error');
+            const msg = e.target.parentElement.querySelector('.validation-message');
+            if (msg) msg.remove();
+            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
+            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+          });
+        }
+
+        const textareaInput = screen3.querySelector(`#textarea_${question.id}`);
+        if (textareaInput) {
+          textareaInput.addEventListener('input', e => {
+            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
+            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+          });
+        }
+
+        const photoInput = screen3.querySelector(`#photo_${question.id}`);
+        if (photoInput) {
+          photoInput.addEventListener('change', e => {
+            const files = Array.from(e.target.files || []).slice(0, 6);
+            Promise.all(files.map(fileToDataURL)).then(images => {
+              const prev = formState.answers[question.id] || { answer:'', notes:'', extra:{}, files:[] };
+              formState.answers[question.id] = { answer: images.length ? `${images.length} foto(s) anexada(s)` : '', notes: prev.notes || '', extra: prev.extra || {}, files: images };
+              renderScreen3();
+            });
           });
         }
 
         screen3.querySelectorAll(`input[name="q_${question.id}"]`).forEach(input => {
           input.addEventListener('change', e => {
-            const prev = formState.answers[question.id] || { notes:'', extra:{} };
-            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {} };
+            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
+            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
             renderScreen3();
+          });
+        });
+
+        screen3.querySelectorAll(`input[data-checkbox-group="${question.id}"]`).forEach(input => {
+          input.addEventListener('change', () => {
+            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
+            const values = [...screen3.querySelectorAll(`input[data-checkbox-group="${question.id}"]:checked`)].map(el => el.value);
+            formState.answers[question.id] = { answer:values, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+            const row = input.closest('.check-flag-row');
+            if (row) row.classList.toggle('checked', input.checked);
           });
         });
 
         const note = screen3.querySelector(`#note_${question.id}`);
         if (note) {
           note.addEventListener('input', e => {
-            const prev = formState.answers[question.id] || { answer:'', extra:{} };
-            formState.answers[question.id] = { ...prev, notes:e.target.value };
+            e.target.classList.remove('field-error');
+            const msg = e.target.parentElement.querySelector('.validation-message');
+            if (msg) msg.remove();
+            const prev = formState.answers[question.id] || { answer:'', extra:{}, files:[] };
+            formState.answers[question.id] = { ...prev, files:prev.files || [], notes:e.target.value };
           });
         }
       });
@@ -504,18 +638,43 @@
       });
     }
 
+    
     function validateRound(round) {
-      for (const q of round.questions) {
+      for (const q of round.questions.filter(shouldShowQuestion)) {
         const st = formState.answers[q.id];
+        if (['section', 'section_minor', 'checkboxes_optional', 'textarea_optional', 'photo_upload_optional'].includes(q.kind)) {
+          continue;
+        }
         if (q.kind === 'text_required' && !st?.answer?.trim()) {
+          const textField = screen3.querySelector(`#text_${q.id}`);
+          if (textField) {
+            textField.classList.add('field-error');
+            if (!textField.nextElementSibling || !textField.nextElementSibling.classList || !textField.nextElementSibling.classList.contains('validation-message')) {
+              textField.insertAdjacentHTML('afterend', '<div class="validation-message">Preencha este campo antes de finalizar.</div>');
+            }
+            textField.scrollIntoView({ behavior:'smooth', block:'center' });
+            textField.focus();
+          }
           alert(`Preencha a pergunta: "${q.text}"`);
           return false;
         }
-        if (q.kind !== 'text_required' && !st?.answer) {
+        if (!['text_required'].includes(q.kind) && !st?.answer) {
           alert(`Responda a pergunta: "${q.text}"`);
           return false;
         }
-        if ((q.kind === 'yesno' || q.kind === 'tri') && st.answer === 'Não' && !st.notes?.trim()) {
+        const observationTriggers = Array.isArray(q.observationTriggers)
+          ? q.observationTriggers
+          : [q.observationTrigger || 'Não'];
+        if (['yesno', 'tri', 'custom_options'].includes(q.kind) && observationTriggers.includes(st.answer) && !st.notes?.trim()) {
+          const obsField = screen3.querySelector(`#note_${q.id}`);
+          if (obsField) {
+            obsField.classList.add('field-error');
+            if (!obsField.nextElementSibling || !obsField.nextElementSibling.classList || !obsField.nextElementSibling.classList.contains('validation-message')) {
+              obsField.insertAdjacentHTML('afterend', '<div class="validation-message">Descreva o problema antes de finalizar.</div>');
+            }
+            obsField.scrollIntoView({ behavior:'smooth', block:'center' });
+            obsField.focus();
+          }
           alert(`Preencha a observação da pergunta: "${q.text}"`);
           return false;
         }
@@ -532,6 +691,8 @@
       return true;
     }
 
+
+    
     function buildReportObject() {
       const round = getSelectedRound();
       return {
@@ -543,18 +704,33 @@
         certificadoData: formState.certificadoData,
         ronda: round?.name || '',
         geradoEm: formState.startedAt || new Date().toISOString(),
-        perguntas: round?.questions.map((q, i) => {
-          const st = formState.answers[q.id] || { answer:'', notes:'', extra:{} };
+        perguntas: round?.questions.filter(shouldShowQuestion).map((q, i) => {
+          const st = formState.answers[q.id] || { answer:'', notes:'', extra:{}, files:[] };
+          const camposAdicionais = (q.followUps || []).filter(f => f.trigger === st.answer).map(f => ({ campo:f.label, valor:st.extra?.[f.key] || '' }));
+          if (q.kind === 'checkboxes_optional') {
+            (q.options || []).forEach(opt => {
+              const marcado = Array.isArray(st.answer) && st.answer.includes(opt);
+              camposAdicionais.push({ campo: opt, valor: marcado ? 'SIM' : 'NÃO' });
+            });
+          }
+          if (q.kind === 'photo_upload_optional') {
+            camposAdicionais.push({ campo: 'Fotos anexadas', valor: Array.isArray(st.files) && st.files.length ? `${st.files.length} arquivo(s)` : 'Nenhuma' });
+          }
           return {
             ordem: i + 1,
             pergunta: q.text,
-            resposta: st.answer || '',
+            tipo: q.kind,
+            resposta: q.kind === 'checkboxes_optional'
+              ? ''
+              : (Array.isArray(st.answer) ? st.answer.join(', ') : (st.answer || '')),
             observacao: st.notes || '',
-            camposAdicionais: (q.followUps || []).filter(f => f.trigger === st.answer).map(f => ({ campo:f.label, valor:st.extra?.[f.key] || '' }))
+            camposAdicionais,
+            files: st.files || []
           };
         }) || []
       };
     }
+
 
     function renderScreen4() {
       const report = buildReportObject();
@@ -581,7 +757,7 @@
             <div class="report-item"><strong>Data/Hora</strong><div>${new Date(report.geradoEm).toLocaleString('pt-BR')}</div></div>
             <div class="report-item"><strong>Ronda</strong><div>${escapeHtml(report.ronda)}</div></div>
             <div class="report-item"><strong>Validação do Checklist</strong><div>${escapeHtml(report.validacaoChecklist || '-')}</div></div>
-            <div class="report-item"><strong>Certificado digital</strong><div>${escapeHtml(report.certificadoNome || '-')}</div></div>
+            
           </div>
         </div>
 
@@ -603,17 +779,7 @@
             </div>
           </div>
 
-          <div class="grid grid-2" style="margin-top:14px;">
-            <div class="field">
-              <label for="certificadoDigital">Integração com certificado digital</label>
-              <input id="certificadoDigital" type="file" accept=".pfx,.p12,.cer,.crt,.pem,.key,application/x-pkcs12,application/x-x509-ca-cert" />
-            </div>
-            <div class="field">
-              <label for="certificadoNome">Certificado selecionado</label>
-              <input id="certificadoNome" type="text" value="${escapeHtml(report.certificadoNome || '')}" placeholder="Nenhum certificado selecionado" readonly />
-            </div>
-          </div>
-          <div class="muted" style="margin-top:8px;">O certificado fica registrado no relatório. A assinatura criptográfica real do PDF depende de solução externa de certificado/token.</div>
+          
         </div>
 
         <div class="report-box">
@@ -621,10 +787,11 @@
           <div class="grid">
             ${report.perguntas.map(p => `
               <div class="report-item">
-                <strong>${p.ordem}. ${escapeHtml(p.pergunta)}</strong>
-                <div style="margin-top:8px;"><strong>${p.pergunta === 'Qual a sala de reunião?' ? 'Sala informada' : 'Resposta'}:</strong> ${escapeHtml(p.resposta || '-')}</div>
+                <strong>${escapeHtml(p.pergunta)}</strong>
+                ${p.tipo === 'checkboxes_optional' ? '' : `<div style="margin-top:8px;"><strong>${['Qual a sala de reunião?', 'Andar', 'Tempo total de ronda (min)', 'Observações', 'Riscos/Planos de ação', 'Ações/Peças a providenciar', 'Chamados/Peças', 'Nome da impressora', 'Registrar fotos de anomalias físicas para histórico'].includes(p.pergunta) ? 'Informação' : 'Resposta'}:</strong> ${escapeHtml(p.resposta || '-')}</div>`}
                 ${p.observacao ? `<div style="margin-top:6px;"><strong>Observação:</strong> ${escapeHtml(p.observacao)}</div>` : ''}
                 ${(p.camposAdicionais || []).map(extra => `<div style="margin-top:6px;"><strong>${escapeHtml(extra.campo)}:</strong> ${escapeHtml(extra.valor || '-')}</div>`).join('')}
+                ${Array.isArray(p.files) && p.files.length ? `<div class="preview-grid" style="margin-top:10px;">${p.files.map(src => `<img src="${src}" alt="Foto anexada" style="width:100%; height:92px; object-fit:cover; border-radius:12px; border:1px solid var(--line);" />`).join('')}</div>` : ''}
               </div>
             `).join('')}
           </div>
@@ -654,16 +821,19 @@
       screen4.querySelector('#certificadoDigital').addEventListener('change', handleCertificateFile);
     }
 
+    
     function setupSignaturePad() {
       const canvas = document.getElementById('signatureCanvas');
       if (!canvas) return;
 
       const ratio = Math.max(window.devicePixelRatio || 1, 1);
       const rect = canvas.getBoundingClientRect();
-      const existing = formState.assinaturaDigital;
+      if (!rect.width || !rect.height) return;
 
+      const existing = formState.assinaturaDigital || '';
       canvas.width = Math.floor(rect.width * ratio);
       canvas.height = Math.floor(rect.height * ratio);
+
       const ctx = canvas.getContext('2d');
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.lineWidth = 2.2;
@@ -679,8 +849,8 @@
         img.src = existing;
       }
 
-      if (signaturePadReady) return;
-      signaturePadReady = true;
+      if (canvas.dataset.bound === '1') return;
+      canvas.dataset.bound = '1';
 
       const getPoint = evt => {
         const r = canvas.getBoundingClientRect();
@@ -697,8 +867,8 @@
       const move = evt => {
         if (!isDrawing) return;
         evt.preventDefault();
-        const ctx2 = canvas.getContext('2d');
         const point = getPoint(evt);
+        const ctx2 = canvas.getContext('2d');
         ctx2.beginPath();
         ctx2.moveTo(lastPoint.x, lastPoint.y);
         ctx2.lineTo(point.x, point.y);
@@ -711,26 +881,36 @@
         isDrawing = false;
         lastPoint = null;
         formState.assinaturaDigital = canvas.toDataURL('image/png');
+        const pill = screen4.querySelector('.signature-actions .pill');
+        if (pill) pill.textContent = 'Assinatura capturada';
       };
 
       canvas.addEventListener('mousedown', start);
       canvas.addEventListener('mousemove', move);
+      canvas.addEventListener('mouseleave', end);
       window.addEventListener('mouseup', end);
       canvas.addEventListener('touchstart', start, { passive:false });
       canvas.addEventListener('touchmove', move, { passive:false });
-      window.addEventListener('touchend', end, { passive:false });
+      canvas.addEventListener('touchend', end, { passive:false });
+      canvas.addEventListener('touchcancel', end, { passive:false });
     }
 
+
+    
     function clearSignature() {
       formState.assinaturaDigital = '';
       const canvas = document.getElementById('signatureCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      renderScreen4();
-      setTimeout(setupSignaturePad, 50);
+      const pill = screen4.querySelector('.signature-actions .pill');
+      if (pill) pill.textContent = 'Assinatura pendente';
+      setTimeout(setupSignaturePad, 20);
     }
+
 
     function handleCertificateFile(e) {
       const file = (e.target.files || [])[0];
@@ -809,10 +989,12 @@
 
       const card = item => {
         const lines = [];
-        lines.push(`${item.pergunta === 'Qual a sala de reunião?' ? 'Sala informada' : 'Resposta'}: ${item.resposta || '-'}`);
+        if (item.tipo !== 'checkboxes_optional') {
+          lines.push(`${['Qual a sala de reunião?', 'Andar', 'Tempo total de ronda (min)', 'Observações', 'Riscos/Planos de ação'].includes(item.pergunta) ? 'Informação' : 'Resposta'}: ${item.resposta || '-'}`);
+        }
         if (item.observacao) lines.push(`Observação: ${item.observacao}`);
         (item.camposAdicionais || []).forEach(extra => lines.push(`${extra.campo}: ${extra.valor || '-'}`));
-        const titleLines = doc.splitTextToSize(`${item.ordem}. ${item.pergunta}`, pageWidth - (margin * 2) - 8);
+        const titleLines = doc.splitTextToSize(`${item.pergunta}`, pageWidth - (margin * 2) - 8);
         const bodyLines = lines.flatMap(line => doc.splitTextToSize(line, pageWidth - (margin * 2) - 8));
         const h = 10 + titleLines.length * 5 + bodyLines.length * 4.7 + 6;
         ensureSpace(h);
@@ -842,6 +1024,12 @@
       if (report.ronda === 'Ronda nas Salas de Reunião') {
         const sala = report.perguntas.find(p => p.pergunta === 'Qual a sala de reunião?')?.resposta || '-';
         labelValue('Sala de reunião:', sala);
+      }
+      if (report.ronda === 'CPD' || report.ronda === 'Ronda Setorial') {
+        const andar = report.perguntas.find(p => p.pergunta === 'Andar')?.resposta || '-';
+        const tempoRonda = report.perguntas.find(p => p.pergunta === 'Tempo total de ronda (min)')?.resposta || '-';
+        labelValue('Andar:', andar);
+        labelValue('Tempo de ronda:', `${tempoRonda} min`);
       }
       labelValue('Gerado em:', new Date(report.geradoEm).toLocaleString('pt-BR'));
       labelValue('Certificado digital:', report.certificadoNome || '-');
