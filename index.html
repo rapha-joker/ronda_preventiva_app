@@ -203,7 +203,6 @@
 
           { id: 'sal_pred_section', text: 'Itens preditivos sugeridos', kind: 'section_minor' },
           { id: 'sal_pred_flags', text: 'Itens preditivos sugeridos', kind: 'checkboxes_optional', options: ['Verificar firmware de codecs/câmeras/TVs e agendar atualização se necessário', 'Inspecionar conectores e cabos por desgaste/folga (substituir preventivamente)'] },
-          { id: 'sal_pred_fotos', text: 'Registrar fotos de anomalias físicas para histórico', kind: 'photo_upload_optional' },
           { id: 'sal_acoes', text: 'Ações/Peças a providenciar', kind: 'textarea_optional', placeholder: 'Descreva ações e peças a providenciar' },
 
           { id: 'sal_prn_section', text: 'IMPRESSORAS', kind: 'section' },
@@ -467,7 +466,7 @@
 
     function renderQuestion(question, index) {
       if (!shouldShowQuestion(question)) return '';
-      const ans = formState.answers[question.id] || { answer:'', notes:'', extra:{}, files:[] };
+      const ans = formState.answers[question.id] || { answer:'', notes:'', extra:{} };
 
       if (question.kind === 'section' || question.kind === 'section_minor') {
         return `<div class="question" data-question="${question.id}" style="border-style:dashed; background:${question.kind === 'section' ? 'rgba(8,31,92,.04)' : 'rgba(77,183,204,.08)'};">
@@ -573,16 +572,16 @@
             e.target.classList.remove('field-error');
             const msg = e.target.parentElement.querySelector('.validation-message');
             if (msg) msg.remove();
-            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
-            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+            const prev = formState.answers[question.id] || { notes:'', extra:{} };
+            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {} };
           });
         }
 
         const textareaInput = screen3.querySelector(`#textarea_${question.id}`);
         if (textareaInput) {
           textareaInput.addEventListener('input', e => {
-            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
-            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+            const prev = formState.answers[question.id] || { notes:'', extra:{} };
+            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {} };
           });
         }
 
@@ -591,7 +590,7 @@
           photoInput.addEventListener('change', e => {
             const files = Array.from(e.target.files || []).slice(0, 6);
             Promise.all(files.map(fileToDataURL)).then(images => {
-              const prev = formState.answers[question.id] || { answer:'', notes:'', extra:{}, files:[] };
+              const prev = formState.answers[question.id] || { answer:'', notes:'', extra:{} };
               formState.answers[question.id] = { answer: images.length ? `${images.length} foto(s) anexada(s)` : '', notes: prev.notes || '', extra: prev.extra || {}, files: images };
               renderScreen3();
             });
@@ -600,17 +599,17 @@
 
         screen3.querySelectorAll(`input[name="q_${question.id}"]`).forEach(input => {
           input.addEventListener('change', e => {
-            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
-            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+            const prev = formState.answers[question.id] || { notes:'', extra:{} };
+            formState.answers[question.id] = { answer:e.target.value, notes:prev.notes || '', extra:prev.extra || {} };
             renderScreen3();
           });
         });
 
         screen3.querySelectorAll(`input[data-checkbox-group="${question.id}"]`).forEach(input => {
           input.addEventListener('change', () => {
-            const prev = formState.answers[question.id] || { notes:'', extra:{}, files:[] };
+            const prev = formState.answers[question.id] || { notes:'', extra:{} };
             const values = [...screen3.querySelectorAll(`input[data-checkbox-group="${question.id}"]:checked`)].map(el => el.value);
-            formState.answers[question.id] = { answer:values, notes:prev.notes || '', extra:prev.extra || {}, files:prev.files || [] };
+            formState.answers[question.id] = { answer:values, notes:prev.notes || '', extra:prev.extra || {} };
             const row = input.closest('.check-flag-row');
             if (row) row.classList.toggle('checked', input.checked);
           });
@@ -622,8 +621,8 @@
             e.target.classList.remove('field-error');
             const msg = e.target.parentElement.querySelector('.validation-message');
             if (msg) msg.remove();
-            const prev = formState.answers[question.id] || { answer:'', extra:{}, files:[] };
-            formState.answers[question.id] = { ...prev, files:prev.files || [], notes:e.target.value };
+            const prev = formState.answers[question.id] || { answer:'', extra:{} };
+            formState.answers[question.id] = { ...prev, notes:e.target.value };
           });
         }
       });
@@ -642,7 +641,7 @@
     function validateRound(round) {
       for (const q of round.questions.filter(shouldShowQuestion)) {
         const st = formState.answers[q.id];
-        if (['section', 'section_minor', 'checkboxes_optional', 'textarea_optional', 'photo_upload_optional'].includes(q.kind)) {
+        if (['section', 'section_minor', 'checkboxes_optional', 'textarea_optional'].includes(q.kind)) {
           continue;
         }
         if (q.kind === 'text_required' && !st?.answer?.trim()) {
@@ -705,16 +704,13 @@
         ronda: round?.name || '',
         geradoEm: formState.startedAt || new Date().toISOString(),
         perguntas: round?.questions.filter(shouldShowQuestion).map((q, i) => {
-          const st = formState.answers[q.id] || { answer:'', notes:'', extra:{}, files:[] };
+          const st = formState.answers[q.id] || { answer:'', notes:'', extra:{} };
           const camposAdicionais = (q.followUps || []).filter(f => f.trigger === st.answer).map(f => ({ campo:f.label, valor:st.extra?.[f.key] || '' }));
           if (q.kind === 'checkboxes_optional') {
             (q.options || []).forEach(opt => {
               const marcado = Array.isArray(st.answer) && st.answer.includes(opt);
               camposAdicionais.push({ campo: opt, valor: marcado ? 'SIM' : 'NÃO' });
             });
-          }
-          if (q.kind === 'photo_upload_optional') {
-            camposAdicionais.push({ campo: 'Fotos anexadas', valor: Array.isArray(st.files) && st.files.length ? `${st.files.length} arquivo(s)` : 'Nenhuma' });
           }
           return {
             ordem: i + 1,
@@ -724,8 +720,7 @@
               ? ''
               : (Array.isArray(st.answer) ? st.answer.join(', ') : (st.answer || '')),
             observacao: st.notes || '',
-            camposAdicionais,
-            files: st.files || []
+            camposAdicionais
           };
         }) || []
       };
@@ -791,7 +786,6 @@
                 ${p.tipo === 'checkboxes_optional' ? '' : `<div style="margin-top:8px;"><strong>${['Qual a sala de reunião?', 'Andar', 'Tempo total de ronda (min)', 'Observações', 'Riscos/Planos de ação', 'Ações/Peças a providenciar', 'Chamados/Peças', 'Nome da impressora', 'Registrar fotos de anomalias físicas para histórico'].includes(p.pergunta) ? 'Informação' : 'Resposta'}:</strong> ${escapeHtml(p.resposta || '-')}</div>`}
                 ${p.observacao ? `<div style="margin-top:6px;"><strong>Observação:</strong> ${escapeHtml(p.observacao)}</div>` : ''}
                 ${(p.camposAdicionais || []).map(extra => `<div style="margin-top:6px;"><strong>${escapeHtml(extra.campo)}:</strong> ${escapeHtml(extra.valor || '-')}</div>`).join('')}
-                ${Array.isArray(p.files) && p.files.length ? `<div class="preview-grid" style="margin-top:10px;">${p.files.map(src => `<img src="${src}" alt="Foto anexada" style="width:100%; height:92px; object-fit:cover; border-radius:12px; border:1px solid var(--line);" />`).join('')}</div>` : ''}
               </div>
             `).join('')}
           </div>
@@ -818,9 +812,9 @@
       screen4.querySelector('#btnChecklist').addEventListener('click', newChecklist);
       screen4.querySelector('#btnRestart').addEventListener('click', resetAll);
       screen4.querySelector('#btnClearSignature').addEventListener('click', clearSignature);
-      screen4.querySelector('#certificadoDigital').addEventListener('change', handleCertificateFile);
     }
 
+    
     
     function setupSignaturePad() {
       const canvas = document.getElementById('signatureCanvas');
@@ -828,71 +822,144 @@
 
       const ratio = Math.max(window.devicePixelRatio || 1, 1);
       const rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+      const cssWidth = Math.max(300, Math.floor(rect.width || canvas.clientWidth || 600));
+      const cssHeight = Math.max(180, Math.floor(rect.height || 220));
 
-      const existing = formState.assinaturaDigital || '';
-      canvas.width = Math.floor(rect.width * ratio);
-      canvas.height = Math.floor(rect.height * ratio);
+      canvas.width = Math.floor(cssWidth * ratio);
+      canvas.height = Math.floor(cssHeight * ratio);
+      canvas.style.width = cssWidth + 'px';
+      canvas.style.height = cssHeight + 'px';
 
       const ctx = canvas.getContext('2d');
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(ratio, ratio);
       ctx.lineWidth = 2.2;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.strokeStyle = '#081f5c';
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, rect.width, rect.height);
+      ctx.fillRect(0, 0, cssWidth, cssHeight);
 
+      const existing = formState.assinaturaDigital || '';
       if (existing) {
         const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        img.onload = () => ctx.drawImage(img, 0, 0, cssWidth, cssHeight);
         img.src = existing;
       }
 
-      if (canvas.dataset.bound === '1') return;
-      canvas.dataset.bound = '1';
+      let drawing = false;
+      let lastX = 0;
+      let lastY = 0;
 
       const getPoint = evt => {
         const r = canvas.getBoundingClientRect();
         const source = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
-        return { x: source.clientX - r.left, y: source.clientY - r.top };
+        return {
+          x: source.clientX - r.left,
+          y: source.clientY - r.top
+        };
       };
 
       const start = evt => {
         evt.preventDefault();
-        isDrawing = true;
-        lastPoint = getPoint(evt);
+        drawing = true;
+        const p = getPoint(evt);
+        lastX = p.x;
+        lastY = p.y;
       };
 
       const move = evt => {
-        if (!isDrawing) return;
+        if (!drawing) return;
         evt.preventDefault();
-        const point = getPoint(evt);
-        const ctx2 = canvas.getContext('2d');
-        ctx2.beginPath();
-        ctx2.moveTo(lastPoint.x, lastPoint.y);
-        ctx2.lineTo(point.x, point.y);
-        ctx2.stroke();
-        lastPoint = point;
+        const p = getPoint(evt);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        lastX = p.x;
+        lastY = p.y;
       };
 
-      const end = () => {
-        if (!isDrawing) return;
-        isDrawing = false;
-        lastPoint = null;
+      const end = evt => {
+        if (!drawing) return;
+        if (evt) evt.preventDefault();
+        drawing = false;
         formState.assinaturaDigital = canvas.toDataURL('image/png');
         const pill = screen4.querySelector('.signature-actions .pill');
         if (pill) pill.textContent = 'Assinatura capturada';
       };
 
-      canvas.addEventListener('mousedown', start);
-      canvas.addEventListener('mousemove', move);
-      canvas.addEventListener('mouseleave', end);
-      window.addEventListener('mouseup', end);
-      canvas.addEventListener('touchstart', start, { passive:false });
-      canvas.addEventListener('touchmove', move, { passive:false });
-      canvas.addEventListener('touchend', end, { passive:false });
-      canvas.addEventListener('touchcancel', end, { passive:false });
+      // Replace the canvas with a clone to remove old listeners before rebinding.
+      const clone = canvas.cloneNode(true);
+      canvas.parentNode.replaceChild(clone, canvas);
+
+      clone.width = Math.floor(cssWidth * ratio);
+      clone.height = Math.floor(cssHeight * ratio);
+      clone.style.width = cssWidth + 'px';
+      clone.style.height = cssHeight + 'px';
+
+      const cloneCtx = clone.getContext('2d');
+      cloneCtx.setTransform(1, 0, 0, 1, 0, 0);
+      cloneCtx.scale(ratio, ratio);
+      cloneCtx.lineWidth = 2.2;
+      cloneCtx.lineCap = 'round';
+      cloneCtx.lineJoin = 'round';
+      cloneCtx.strokeStyle = '#081f5c';
+      cloneCtx.fillStyle = '#ffffff';
+      cloneCtx.fillRect(0, 0, cssWidth, cssHeight);
+
+      if (existing) {
+        const img2 = new Image();
+        img2.onload = () => cloneCtx.drawImage(img2, 0, 0, cssWidth, cssHeight);
+        img2.src = existing;
+      }
+
+      const getPointClone = evt => {
+        const r = clone.getBoundingClientRect();
+        const source = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+        return {
+          x: source.clientX - r.left,
+          y: source.clientY - r.top
+        };
+      };
+
+      const startClone = evt => {
+        evt.preventDefault();
+        drawing = true;
+        const p = getPointClone(evt);
+        lastX = p.x;
+        lastY = p.y;
+      };
+
+      const moveClone = evt => {
+        if (!drawing) return;
+        evt.preventDefault();
+        const p = getPointClone(evt);
+        cloneCtx.beginPath();
+        cloneCtx.moveTo(lastX, lastY);
+        cloneCtx.lineTo(p.x, p.y);
+        cloneCtx.stroke();
+        lastX = p.x;
+        lastY = p.y;
+      };
+
+      const endClone = evt => {
+        if (!drawing) return;
+        if (evt) evt.preventDefault();
+        drawing = false;
+        formState.assinaturaDigital = clone.toDataURL('image/png');
+        const pill = screen4.querySelector('.signature-actions .pill');
+        if (pill) pill.textContent = 'Assinatura capturada';
+      };
+
+      clone.addEventListener('mousedown', startClone);
+      clone.addEventListener('mousemove', moveClone);
+      window.addEventListener('mouseup', endClone);
+
+      clone.addEventListener('touchstart', startClone, { passive: false });
+      clone.addEventListener('touchmove', moveClone, { passive: false });
+      window.addEventListener('touchend', endClone, { passive: false });
+      window.addEventListener('touchcancel', endClone, { passive: false });
     }
 
 
@@ -902,7 +969,6 @@
       const canvas = document.getElementById('signatureCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
-      const rect = canvas.getBoundingClientRect();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -911,14 +977,6 @@
       setTimeout(setupSignaturePad, 20);
     }
 
-
-    function handleCertificateFile(e) {
-      const file = (e.target.files || [])[0];
-      formState.certificadoNome = file ? file.name : '';
-      formState.certificadoData = file ? new Date().toISOString() : '';
-      const certificadoNome = screen4.querySelector('#certificadoNome');
-      if (certificadoNome) certificadoNome.value = formState.certificadoNome || '';
-    }
 
     function makeSmartFileName(ext = 'pdf') {
       const round = getSelectedRound();
