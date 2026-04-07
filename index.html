@@ -92,10 +92,10 @@ function buildRounds(){
     {id:'racks', name:'Racks de Distribuição', description:'Inspeção dos racks de distribuição e organização física.'},
     {id:'salas_tecnicas', name:'Salas Técnicas', description:'Verificação das salas técnicas e infraestrutura associada.'},
     {id:'salas_estoque', name:'Salas de Estoque', description:'Verificação física e organizacional das salas de estoque.'},
-    {id:'salas_reuniao_modelo1', name:'Salas de Reunião', description:'Modelo utilizado para a regional Corporativo.', onlyIf: s => s.regional === 'Corporativo'},
-    {id:'salas_reuniao_modelo2', name:'Salas de Reunião', description:'Modelo utilizado para as demais regionais.', onlyIf: s => s.regional && s.regional !== 'Corporativo'},
+    {id:'salas_reuniao_modelo1', name:'Salas de Reunião', description:'Verificação das salas de reunião e infraestrutura associada.', onlyIf: s => s.regional === 'Corporativo'},
+    {id:'salas_reuniao_modelo2', name:'Salas de Reunião', description:'Verificação das salas de reunião e infraestrutura associada.', onlyIf: s => s.regional && s.regional !== 'Corporativo'},
     {id:'auditorio', name:'Auditório', description:'Verificação do auditório e seus recursos.', onlyIf: s => s.regional && s.regional !== 'Corporativo'},
-    {id:'sala_ao_vivo', name:(state.regional==='Corporativo' && state.unidade==='Città Office') ? 'Sala ao Vivo' : 'Sala de Aula / Sala de Aula ao Vivo', description:(state.regional==='Corporativo' && state.unidade==='Città Office') ? 'Verificação da Sala ao Vivo.' : 'Verificação da Sala de Aula ou Sala de Aula ao Vivo.', onlyIf: s => s.regional !== 'Corporativo' || s.unidade === 'Città Office'}
+    {id:'sala_ao_vivo', name:(state.regional==='Corporativo' && state.unidade==='Città Office') ? 'Sala ao Vivo' : 'Sala de Aula / Sala de Aula ao Vivo', description:(state.regional==='Corporativo' && state.unidade==='Città Office') ? 'Verificação da Sala ao Vivo.' : 'Verificação Sala ao Vivo.', onlyIf: s => s.regional !== 'Corporativo' || s.unidade === 'Città Office'}
   ];
   return rounds.filter(r => !r.onlyIf || r.onlyIf(state));
 }
@@ -538,7 +538,7 @@ const AUDITORIO_QUESTIONS = [
   {id:'aud_7', kind:'status2', text:'Rede Wi‑Fi visível e conectando no ambiente', cols:4, infos:[['Descrição','Verifica disponibilidade e funcionamento da rede Wi‑Fi no auditório.'],['Como verificar','1. Pegar o celular ou notebook e abrir a lista de redes Wi‑Fi. 2. Ver se a rede da unidade está aparecendo com sinal forte. 3. Conectar nas redes usando o celular ou notebook e tentar abrir qualquer site para ver se a internet funciona.'],['Registro pelo técnico','Marcar ✔️ se a rede estiver visível e conectando. Marcar Não Conforme (X) se não conectar.'],['Exemplos de Ñ OK','Wi‑Fi não aparece. Falha de conexão.']]}
 ];
 
-const state = {tecnico:'', regional:'', unidade:'', assinatura:'', roundId:'', answers:{}, startedAt:''};
+const state = {tecnico:'', regional:'', unidade:'', assinatura:'', dataRonda:'', roundId:'', answers:{}, startedAt:''};
 const steps = [
   {id:1,title:'Identificação',desc:'Dados iniciais'},
   {id:2,title:'Ronda',desc:'Escolha do checklist'},
@@ -571,6 +571,7 @@ function renderScreen1(){
         <div class="field"><label for="tecnico">Nome do técnico</label><input id="tecnico" type="text" value="${escapeHtml(state.tecnico)}" placeholder="Ex.: Raphael Amaral"></div>
         <div class="field"><label for="regional">Regional</label><select id="regional"><option value="">Selecione</option>${regionals.map(r=>`<option value="${escapeHtml(r)}" ${state.regional===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select></div>
         <div class="field"><label for="unidade">Unidade</label><select id="unidade" ${!state.regional?'disabled':''}><option value="">Selecione</option>${units.map(u=>`<option value="${escapeHtml(u)}" ${state.unidade===u?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select></div>
+        <div class="field"><label for="dataRonda">Data da ronda</label><input id="dataRonda" type="date" value="${escapeHtml(state.dataRonda)}"></div>
         <div class="field"><label for="assinatura">Validação do Checklist (Fieldtask)</label><input id="assinatura" type="text" value="${escapeHtml(state.assinatura)}" placeholder="Ex.: FIELDTASK0094643"></div>
       </div>
     </div>
@@ -720,7 +721,6 @@ function renderScreen4(){
         <div class="report-section-title"><h3 style="margin:0;color:var(--navy)">Respostas</h3><span class="pill">${questions.length} item(ns)</span></div>
         <div class="summary-list">${summary || '<div class="summary-item">Nenhuma resposta.</div>'}</div>
       </div>
-      <div class="report-footer-note">Relatório visual no padrão YDUQS com identidade da regional e marca d’água de fundo.</div>
     </div>
     <div class="actions">
       <button class="btn-secondary" id="back3" type="button">Voltar</button>
@@ -754,7 +754,17 @@ function buildExportRows(){
 }
 
 function getBaseFileName(){
-  return `ronda_preventiva_${slugify(state.unidade || 'unidade')}_${slugify(state.roundId || 'ronda')}`;
+  const unidade = slugify(state.unidade || 'unidade');
+  let data = state.dataRonda || '';
+  let dataFormatada = '';
+  if(data && /^\d{4}-\d{2}-\d{2}$/.test(data)){
+    const [ano, mes, dia] = data.split('-');
+    dataFormatada = `${dia}-${mes}-${ano}`;
+  } else {
+    const d = new Date();
+    dataFormatada = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+  }
+  return `ronda_preventiva_${unidade}_${dataFormatada}`;
 }
 
 function exportCSV(){
@@ -836,7 +846,7 @@ function exportPDF(){
     ['Técnico', state.tecnico || '-'],
     ['Regional', state.regional || '-'],
     ['Unidade', state.unidade || '-'],
-    ['Fieldtask', state.assinatura || '-'],
+    ['Fieldtask', state.assinatura || '-'], ['Data da ronda', state.dataRonda ? (()=>{const [a,m,d]=state.dataRonda.split('-'); return `${d}-${m}-${a}`;})() : '-'],
     ['Ronda', round ? round.name : '-'],
     ['Início', state.startedAt ? new Date(state.startedAt).toLocaleString('pt-BR') : '-']
   ];
@@ -920,7 +930,7 @@ function downloadBlob(blob, filename){
 
 function resetAll(){
   if(!confirm('Deseja apagar todo o processo e voltar para a aba Identificação?')) return;
-  state.tecnico=''; state.regional=''; state.unidade=''; state.assinatura=''; state.roundId=''; state.answers={}; state.startedAt='';
+  state.tecnico=''; state.regional=''; state.unidade=''; state.assinatura=''; state.dataRonda=''; state.roundId=''; state.answers={}; state.startedAt='';
   renderScreen1(); renderScreen2(); renderScreen3(); renderScreen4(); showStep(1);
 }
 </script>
