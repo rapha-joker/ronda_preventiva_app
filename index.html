@@ -579,9 +579,10 @@ function renderScreen1(){
   document.getElementById('tecnico').addEventListener('input', e=>state.tecnico=e.target.value);
   document.getElementById('regional').addEventListener('change', e=>{ state.regional=e.target.value; state.unidade=''; if(state.roundId && !buildRounds().some(r=>r.id===state.roundId)){ state.roundId=''; state.answers={}; } renderScreen1(); });
   document.getElementById('unidade').addEventListener('change', e=>{ state.unidade=e.target.value; if(state.roundId && !buildRounds().some(r=>r.id===state.roundId)){ state.roundId=''; state.answers={}; } });
+  document.getElementById('dataRonda').addEventListener('input', e=>state.dataRonda=e.target.value);
   document.getElementById('assinatura').addEventListener('input', e=>state.assinatura=e.target.value);
   document.getElementById('toStep2').addEventListener('click', ()=>{
-    if(!state.tecnico.trim() || !state.regional || !state.unidade){ alert('Preencha nome do técnico, regional e unidade.'); return; }
+    if(!state.tecnico.trim() || !state.regional || !state.unidade || !state.dataRonda){ alert('Preencha nome do técnico, regional, unidade e data da ronda.'); return; }
     state.startedAt = new Date().toISOString();
     showStep(2);
   });
@@ -714,6 +715,7 @@ function renderScreen4(){
         <div class="summary-item"><strong>Regional</strong><div>${escapeHtml(state.regional||'-')}</div></div>
         <div class="summary-item"><strong>Unidade</strong><div>${escapeHtml(state.unidade||'-')}</div></div>
         <div class="summary-item"><strong>Fieldtask</strong><div>${escapeHtml(state.assinatura||'-')}</div></div>
+        <div class="summary-item"><strong>Data da ronda</strong><div>${state.dataRonda ? (()=>{const [a,m,d]=state.dataRonda.split('-'); return `${d}-${m}-${a}`;})() : '-'}</div></div>
         <div class="summary-item"><strong>Ronda</strong><div>${escapeHtml(round ? round.name : '-')}</div></div>
         <div class="summary-item"><strong>Início</strong><div>${state.startedAt ? new Date(state.startedAt).toLocaleString('pt-BR') : '-'}</div></div>
       </div>
@@ -754,7 +756,9 @@ function buildExportRows(){
 }
 
 function getBaseFileName(){
+  const regional = slugify(state.regional || 'regional');
   const unidade = slugify(state.unidade || 'unidade');
+  const ronda = slugify((getSelectedRound()?.name) || 'ronda');
   let data = state.dataRonda || '';
   let dataFormatada = '';
   if(data && /^\d{4}-\d{2}-\d{2}$/.test(data)){
@@ -764,7 +768,7 @@ function getBaseFileName(){
     const d = new Date();
     dataFormatada = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
   }
-  return `ronda_preventiva_${unidade}_${dataFormatada}`;
+  return `${regional}_${unidade}_${ronda}_${dataFormatada}`;
 }
 
 function exportCSV(){
@@ -846,31 +850,34 @@ function exportPDF(){
     ['Técnico', state.tecnico || '-'],
     ['Regional', state.regional || '-'],
     ['Unidade', state.unidade || '-'],
-    ['Fieldtask', state.assinatura || '-'], ['Data da ronda', state.dataRonda ? (()=>{const [a,m,d]=state.dataRonda.split('-'); return `${d}-${m}-${a}`;})() : '-'],
+    ['Fieldtask', state.assinatura || '-'],
+    ['Data da ronda', state.dataRonda ? (()=>{const [a,m,d]=state.dataRonda.split('-'); return `${d}-${m}-${a}`;})() : '-'],
     ['Ronda', round ? round.name : '-'],
     ['Início', state.startedAt ? new Date(state.startedAt).toLocaleString('pt-BR') : '-']
   ];
 
   const colGap = 12;
   const colW = (pageW - margin*2 - colGap)/2;
+  const rowHeight = 62;
   meta.forEach((item, idx)=>{
     const col = idx % 2;
     const row = Math.floor(idx / 2);
     const x = margin + col*(colW+colGap);
-    const yy = y + row*52;
+    const yy = y + row*rowHeight;
+    const value = doc.splitTextToSize(normalizePdfText(item[1]), colW-24);
+    const boxH = Math.max(48, 22 + (value.length*12) + 10);
     doc.setFillColor(244,248,253);
-    doc.roundedRect(x, yy, colW, 40, 8, 8, 'F');
+    doc.roundedRect(x, yy, colW, boxH, 8, 8, 'F');
     doc.setTextColor(8,31,92);
     doc.setFont('helvetica','bold');
     doc.setFontSize(10);
-    doc.text(item[0], x+12, yy+14);
+    doc.text(item[0], x+12, yy+16);
     doc.setTextColor(22,38,63);
     doc.setFont('helvetica','normal');
     doc.setFontSize(11);
-    const value = doc.splitTextToSize(normalizePdfText(item[1]), colW-24);
-    doc.text(value, x+12, yy+29);
+    doc.text(value, x+12, yy+34);
   });
-  y += 172;
+  y += Math.ceil(meta.length / 2) * rowHeight + 20;
 
   doc.setTextColor(8,31,92);
   doc.setFont('helvetica','bold');
