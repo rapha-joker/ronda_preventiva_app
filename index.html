@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Ronda Preventiva YDUQS</title>
+<title>Preventivas YDUQS</title>
 <style>
 :root{--navy:#081f5c;--navy2:#12327d;--cyan:#4db7cc;--bg:#f4f7fb;--card:#fff;--line:#dce5f0;--text:#16263f;--muted:#66758b;--success:#129c56;--danger:#cf3b2f;--shadow:0 12px 34px rgba(8,31,92,.10);--r-xl:24px;--r-lg:18px;--r-md:14px}
 *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(180deg,#f7f9fc 0%,#eef3f9 100%);color:var(--text)}
@@ -50,7 +50,7 @@ button{border:none;border-radius:14px;padding:12px 16px;font:inherit;font-weight
         <p>Checklist técnico para registro de rondas preventivas.</p>
       </div>
     </div>
-    <button class="btn-danger" id="btnResetTop" type="button">Reiniciar processo completo</button>
+    
   </header>
   <main class="layout">
     <aside class="panel sidebar">
@@ -74,6 +74,87 @@ const REGIONAL_UNITS = {
   "Nordeste": ["Alexandrino", "Centro - Fortaleza", "CEUT", "Edufor SLZ", "Feira de Santana", "Gilberto Gil", "Idomed/Açailândia", "Idomed/Alagoinhas", "Idome/Canindé", "Idomed/Quixadá", "Idomed/Iguatu - CE", "Idomed/Juazeiro da Bahia", "Idomed/Juazeiro do Norte", "Jatiúca", "João Pessoa", "Juazeiro do Norte", "Parangaba", "São Luís", "Sergipe", "Unifanor BM", "Unifanor Dunas", "Unifavip", "Unifbv", "Unifacid", "Uniruy", "Via Corpus"],
   "Sudeste SP/MG/ES/Ibmec": ["Barreiro", "Carapicuiba", "Conceição", "Damásio Liberdade", "Estácio Liberdade", "Floresta", "Ibmec BH", "Ibmec DF", "Ibemc RJ - Barra", "Ibmec RJ - Centro", "Ibmec SP - Faria Lima", "Ibmec SP - Paulista", "Interlagos", "Juiz de Fora", "Lourdes", "Newton Paiva - Carlos Luz", "Newton Paiva - Silva Lobo", "Ourinhos", "Prado", "Ribeirão Preto", "Santo Amaro", "Santo André", "Campinas", "Contagem", "Unimetrocamp", "Unitoledo", "Venda Nova", "Vila Velha", "Vitória"]
 };
+
+const LOCAL_TECHNICIANS = ['Raphael Amaral'];
+const SHAREPOINT_CONFIG = {
+  enabled: false,
+  siteUrl: 'https://SEU-TENANT.sharepoint.com/sites/SEU-SITE',
+  lists: {
+    technicians: 'TecnicosRonda',
+    regionals: 'RegionaisRonda',
+    units: 'UnidadesRonda'
+  }
+};
+
+let techniciansData = [...LOCAL_TECHNICIANS];
+let regionalsData = Object.keys(REGIONAL_UNITS);
+let unitsByRegionalData = JSON.parse(JSON.stringify(REGIONAL_UNITS));
+let sharepointStatus = { mode: 'local', message: 'Usando listas locais fixas do HTML.' };
+
+function normalizeText(value){ return String(value ?? '').trim(); }
+function dedupeAndSort(arr){ return Array.from(new Set((arr || []).map(normalizeText).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'})); }
+function getRequestDigest(){
+  const digestInput = document.getElementById('__REQUESTDIGEST');
+  if (digestInput && digestInput.value) return digestInput.value;
+  if (window._spPageContextInfo && window._spPageContextInfo.formDigestValue) return window._spPageContextInfo.formDigestValue;
+  return '';
+}
+async function fetchSharePointJson(url){
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json;odata=verbose' },
+    credentials: 'include'
+  });
+  if (!response.ok) throw new Error(`Falha ao consultar SharePoint (${response.status})`);
+  return response.json();
+}
+async function loadDropdownDataFromSharePoint(){
+  const base = SHAREPOINT_CONFIG.siteUrl.replace(/\/$/, '');
+  const techUrl = `${base}/_api/web/lists/getbytitle('${encodeURIComponent(SHAREPOINT_CONFIG.lists.technicians)}')/items?$select=Id,Title,Ativo,Ordem&$filter=Ativo eq 1&$orderby=Ordem,Title`;
+  const regionalUrl = `${base}/_api/web/lists/getbytitle('${encodeURIComponent(SHAREPOINT_CONFIG.lists.regionals)}')/items?$select=Id,Title,Ativo,Ordem&$filter=Ativo eq 1&$orderby=Ordem,Title`;
+  const unitUrl = `${base}/_api/web/lists/getbytitle('${encodeURIComponent(SHAREPOINT_CONFIG.lists.units)}')/items?$select=Id,Title,Ativo,Ordem,Regional/Id,Regional/Title&$expand=Regional&$filter=Ativo eq 1&$orderby=Ordem,Title`;
+
+  const [techData, regionalData, unitData] = await Promise.all([
+    fetchSharePointJson(techUrl),
+    fetchSharePointJson(regionalUrl),
+    fetchSharePointJson(unitUrl)
+  ]);
+
+  techniciansData = dedupeAndSort((techData.d?.results || []).map(item => item.Title));
+  regionalsData = dedupeAndSort((regionalData.d?.results || []).map(item => item.Title));
+
+  const grouped = {};
+  (unitData.d?.results || []).forEach(item => {
+    const regionalName = normalizeText(item?.Regional?.Title);
+    const unitName = normalizeText(item?.Title);
+    if (!regionalName || !unitName) return;
+    if (!grouped[regionalName]) grouped[regionalName] = [];
+    grouped[regionalName].push(unitName);
+  });
+  Object.keys(grouped).forEach(key => grouped[key] = dedupeAndSort(grouped[key]));
+  unitsByRegionalData = grouped;
+  sharepointStatus = { mode: 'sharepoint', message: 'Dados carregados do SharePoint com sucesso.' };
+}
+
+async function initializeDropdownData(){
+  if (!SHAREPOINT_CONFIG.enabled) {
+    techniciansData = [...LOCAL_TECHNICIANS];
+    regionalsData = Object.keys(REGIONAL_UNITS);
+    unitsByRegionalData = JSON.parse(JSON.stringify(REGIONAL_UNITS));
+    sharepointStatus = { mode: 'local', message: 'Usando listas locais fixas do HTML. Para usar SharePoint, ajuste SHAREPOINT_CONFIG.enabled para true.' };
+    return;
+  }
+  try {
+    await loadDropdownDataFromSharePoint();
+  } catch (error) {
+    console.error(error);
+    techniciansData = [...LOCAL_TECHNICIANS];
+    regionalsData = Object.keys(REGIONAL_UNITS);
+    unitsByRegionalData = JSON.parse(JSON.stringify(REGIONAL_UNITS));
+    sharepointStatus = { mode: 'fallback', message: `Não foi possível consultar o SharePoint. O app voltou para a lista local. Detalhe: ${error.message}` };
+  }
+}
+
 
 const WIFI_QUESTIONS = [
   {id:'wifi_1', text:'Access Point bem fixado', cols:5, infos:[['Descrição','Verifica se o Access Point (AP) está corretamente instalado e fixado na estrutura (teto, parede ou suporte), sem risco de queda ou deslocamento.'],['Como Verificar','1. Encontrar todos os aparelhos de Wi‑Fi instalados na unidade. 2. Checar se estão presos firmemente no teto ou na parede. 3. Garantir que não há cabos esticados forçando o aparelho para fora do suporte.'],['Registro pelo Técnico','Marcar OK se o Access Point estiver firmemente fixado. Marcar Ñ OK se estiver solto, mal instalado ou com risco de queda. Marcar Ñ se aplica caso o AP não esteja visível.'],['Exemplo de Ñ OK','AP solto no suporte. Equipamento apoiado sem fixação. Suporte quebrado ou danificado.'],['Exemplo de Ñ se aplica','Caso o AP não esteja visível. Ex.: sobre o forro.']]},
@@ -538,10 +619,10 @@ const AUDITORIO_QUESTIONS = [
   {id:'aud_7', kind:'status2', text:'Rede Wi‑Fi visível e conectando no ambiente', cols:4, infos:[['Descrição','Verifica disponibilidade e funcionamento da rede Wi‑Fi no auditório.'],['Como verificar','1. Pegar o celular ou notebook e abrir a lista de redes Wi‑Fi. 2. Ver se a rede da unidade está aparecendo com sinal forte. 3. Conectar nas redes usando o celular ou notebook e tentar abrir qualquer site para ver se a internet funciona.'],['Registro pelo técnico','Marcar ✔️ se a rede estiver visível e conectando. Marcar Não Conforme (X) se não conectar.'],['Exemplos de Ñ OK','Wi‑Fi não aparece. Falha de conexão.']]}
 ];
 
-const state = {tecnico:'', regional:'', unidade:'', assinatura:'', dataRonda:'', roundId:'', answers:{}, startedAt:''};
+const state = {tecnico:'', regional:'', unidade:'', assinatura:'', dataRonda:'', setor:'', roundId:'', answers:{}, startedAt:''};
 const steps = [
   {id:1,title:'Identificação',desc:'Dados iniciais'},
-  {id:2,title:'Ronda',desc:'Escolha do checklist'},
+  {id:2,title:'Selecione o ambiente',desc:'Escolha do checklist'},
   {id:3,title:'Checklist',desc:'Respostas e observações'},
   {id:4,title:'Relatório',desc:'Resumo final'}
 ];
@@ -552,37 +633,38 @@ const screen1 = document.getElementById('screen1');
 const screen2 = document.getElementById('screen2');
 const screen3 = document.getElementById('screen3');
 const screen4 = document.getElementById('screen4');
-document.getElementById('btnResetTop').addEventListener('click', resetAll);
-
 init();
-function init(){ renderSteps(); renderScreen1(); renderScreen2(); renderScreen3(); renderScreen4(); showStep(1); }
+async function init(){ await initializeDropdownData(); renderSteps(); renderScreen1(); renderScreen2(); renderScreen3(); renderScreen4(); showStep(1); }
 function renderSteps(){ stepsEl.innerHTML = steps.map(step => `<div class="${currentStep===step.id?'step active':currentStep>step.id?'step done':'step'}"><div class="step-badge">${currentStep>step.id?'✓':step.id}</div><div><div style="font-weight:800;color:var(--navy)">${step.title}</div><div class="muted" style="font-size:.92rem">${step.desc}</div></div></div>`).join(''); }
 function showStep(step){ currentStep = step; [screen1,screen2,screen3,screen4].forEach((el,idx)=>el.classList.toggle('hidden', idx+1!==step)); renderSteps(); if(step===2) renderScreen2(); if(step===3) renderScreen3(); if(step===4) renderScreen4(); window.scrollTo({top:0,behavior:'smooth'}); }
 function escapeHtml(v){ return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 function slugify(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_|_$/g,'').toLowerCase(); }
 
 function renderScreen1(){
-  const regionals = ['Corporativo','Norte-Sul','Nordeste','Sudeste SP/MG/ES/Ibmec','Sudeste RJ'];
-  const units = REGIONAL_UNITS[state.regional] || [];
+  const regionals = regionalsData || [];
+  const units = unitsByRegionalData[state.regional] || [];
+  const technicians = techniciansData || [];
+  const statusTone = sharepointStatus.mode === 'sharepoint' ? 'pill' : 'pill';
   screen1.innerHTML = `
     <div class="section-title"><div><h2>Identificação do técnico</h2><div class="muted">Preencha as informações para identificação e contexto da ronda.</div></div><span class="pill">Identificação</span></div>
+    <div class="round-note"><strong>Fonte das listas:</strong> ${escapeHtml(sharepointStatus.message)}<br><span class="muted">Técnico é independente. Unidade aparece apenas quando estiver vinculada à regional selecionada.</span></div>
     <div class="card">
       <div class="grid grid-2">
-        <div class="field"><label for="tecnico">Nome do técnico</label><input id="tecnico" type="text" value="${escapeHtml(state.tecnico)}" placeholder="Ex.: Raphael Amaral"></div>
+        <div class="field"><label for="tecnico">Nome do técnico</label><select id="tecnico"><option value="">Selecione</option>${technicians.map(t=>`<option value="${escapeHtml(t)}" ${state.tecnico===t?'selected':''}>${escapeHtml(t)}</option>`).join('')}</select></div>
         <div class="field"><label for="regional">Regional</label><select id="regional"><option value="">Selecione</option>${regionals.map(r=>`<option value="${escapeHtml(r)}" ${state.regional===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select></div>
         <div class="field"><label for="unidade">Unidade</label><select id="unidade" ${!state.regional?'disabled':''}><option value="">Selecione</option>${units.map(u=>`<option value="${escapeHtml(u)}" ${state.unidade===u?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select></div>
-        <div class="field"><label for="dataRonda">Data da ronda</label><input id="dataRonda" type="date" value="${escapeHtml(state.dataRonda)}"></div>
-        <div class="field"><label for="assinatura">Validação do Checklist (Fieldtask)</label><input id="assinatura" type="text" value="${escapeHtml(state.assinatura)}" placeholder="Ex.: FIELDTASK0094643"></div>
+        <div class="field"><label for="dataRonda">Data do checklist</label><input id="dataRonda" type="date" value="${escapeHtml(state.dataRonda)}"></div>
+        <div class="field"><label for="assinatura">Número da Fieldtask</label><input id="assinatura" type="text" value="${escapeHtml(state.assinatura)}" placeholder="Ex.: FIELDTASK0094643"></div>
       </div>
     </div>
     <div class="actions"><span></span><button class="btn-primary" id="toStep2" type="button">Continuar</button></div>`;
-  document.getElementById('tecnico').addEventListener('input', e=>state.tecnico=e.target.value);
+  document.getElementById('tecnico').addEventListener('change', e=>state.tecnico=e.target.value);
   document.getElementById('regional').addEventListener('change', e=>{ state.regional=e.target.value; state.unidade=''; if(state.roundId && !buildRounds().some(r=>r.id===state.roundId)){ state.roundId=''; state.answers={}; } renderScreen1(); });
   document.getElementById('unidade').addEventListener('change', e=>{ state.unidade=e.target.value; if(state.roundId && !buildRounds().some(r=>r.id===state.roundId)){ state.roundId=''; state.answers={}; } });
   document.getElementById('dataRonda').addEventListener('input', e=>state.dataRonda=e.target.value);
   document.getElementById('assinatura').addEventListener('input', e=>state.assinatura=e.target.value);
   document.getElementById('toStep2').addEventListener('click', ()=>{
-    if(!state.tecnico.trim() || !state.regional || !state.unidade || !state.dataRonda){ alert('Preencha nome do técnico, regional, unidade e data da ronda.'); return; }
+    if(!state.tecnico.trim() || !state.regional || !state.unidade || !state.assinatura){ alert('Preencha técnico, regional, unidade e número da fieldtask.'); return; }
     state.startedAt = new Date().toISOString();
     showStep(2);
   });
@@ -591,12 +673,12 @@ function renderScreen1(){
 function renderScreen2(){
   const rounds = buildRounds();
   screen2.innerHTML = `
-    <div class="section-title"><div><h2>Selecione a ronda preventiva</h2><div class="muted">As opções abaixo respeitam a regional e unidade escolhidas.</div></div></div>
+    <div class="section-title"><div><h2>Selecione o ambiente</h2><div class="muted">Selecione abaixo o ambiente que será verificado.</div></div></div>
     <div class="grid grid-2">${rounds.map(round=>`<button type="button" class="type-card ${state.roundId===round.id?'selected':''}" data-round="${round.id}"><strong>${escapeHtml(round.name)}</strong><span class="muted">${escapeHtml(round.description)}</span></button>`).join('')}</div>
     <div class="actions"><button class="btn-secondary" id="back1" type="button">Voltar</button><button class="btn-primary" id="toStep3" type="button">Ir para checklist</button></div>`;
   screen2.querySelectorAll('[data-round]').forEach(btn=>btn.addEventListener('click', ()=>{ state.roundId=btn.dataset.round; state.answers={}; renderScreen2(); }));
   document.getElementById('back1').addEventListener('click', ()=>showStep(1));
-  document.getElementById('toStep3').addEventListener('click', ()=>{ if(!state.roundId){ alert('Selecione uma ronda preventiva.'); return; } showStep(3); });
+  document.getElementById('toStep3').addEventListener('click', ()=>{ if(!state.roundId){ alert('Selecione um ambiente.'); return; } showStep(3); });
 }
 
 function getSelectedRound(){ return buildRounds().find(r=>r.id===state.roundId) || null; }
@@ -641,8 +723,16 @@ function renderScreen3(){
   const questions = getQuestionsForRound(round.id);
   screen3.innerHTML = `
     <div class="section-title"><div><h2>${escapeHtml(round.name)}</h2><div class="muted">${escapeHtml(round.description)}</div></div><span class="pill">${questions.length} item(ns)</span></div>
+    <div class="card">
+      <div class="field">
+        <label for="setor">SETOR</label>
+        <input id="setor" type="text" value="${escapeHtml(state.setor || '')}" placeholder="Insire o nome do setor, andar, sala e etc..">
+      </div>
+    </div>
     ${questions.map((q,idx)=>renderQuestion(q,idx)).join('')}
     <div class="actions"><button class="btn-secondary" id="back2" type="button">Voltar</button><button class="btn-primary" id="toStep4" type="button">Finalizar</button></div>`;
+
+  document.getElementById('setor').addEventListener('input', e=>state.setor=e.target.value);
 
   questions.forEach(q=>{
     if(q.kind==='text' || q.kind==='textarea'){
@@ -705,7 +795,7 @@ function renderScreen4(){
     <div class="report-shell">
       <div class="report-header">
         <div>
-          <h2>Resumo da ronda</h2>
+          <h2>Resumo do checklist</h2>
           <div class="muted">Confira os dados antes de gerar os arquivos do relatório.</div>
         </div>
         <img class="report-logo" src="${YDUQS_LOGO}" alt="YDUQS" />
@@ -715,8 +805,8 @@ function renderScreen4(){
         <div class="summary-item"><strong>Regional</strong><div>${escapeHtml(state.regional||'-')}</div></div>
         <div class="summary-item"><strong>Unidade</strong><div>${escapeHtml(state.unidade||'-')}</div></div>
         <div class="summary-item"><strong>Fieldtask</strong><div>${escapeHtml(state.assinatura||'-')}</div></div>
-        <div class="summary-item"><strong>Data da ronda</strong><div>${state.dataRonda ? (()=>{const [a,m,d]=state.dataRonda.split('-'); return `${d}-${m}-${a}`;})() : '-'}</div></div>
-        <div class="summary-item"><strong>Ronda</strong><div>${escapeHtml(round ? round.name : '-')}</div></div>
+        <div class="summary-item"><strong>SETOR</strong><div>${escapeHtml(state.setor||'-')}</div></div>
+        <div class="summary-item"><strong>Ambiente</strong><div>${escapeHtml(round ? round.name : '-')}</div></div>
         <div class="summary-item"><strong>Início</strong><div>${state.startedAt ? new Date(state.startedAt).toLocaleString('pt-BR') : '-'}</div></div>
       </div>
       <div style="padding:0 22px 22px">
@@ -727,17 +817,11 @@ function renderScreen4(){
     <div class="actions">
       <button class="btn-secondary" id="back3" type="button">Voltar</button>
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end">
-        <button class="btn-soft" id="btnPdf" type="button">Gerar PDF</button>
-        <button class="btn-soft" id="btnExcel" type="button">Gerar Excel</button>
-        <button class="btn-soft" id="btnCsv" type="button">Gerar CSV</button>
-        <button class="btn-danger" id="restartFlow" type="button">Reiniciar processo</button>
+        <button class="btn-primary" id="btnFinalizar" type="button">Finalizar</button>
       </div>
     </div>`;
   document.getElementById('back3').addEventListener('click', ()=>showStep(3));
-  document.getElementById('restartFlow').addEventListener('click', resetAll);
-  document.getElementById('btnPdf').addEventListener('click', exportPDF);
-  document.getElementById('btnExcel').addEventListener('click', exportExcel);
-  document.getElementById('btnCsv').addEventListener('click', exportCSV);
+  document.getElementById('btnFinalizar').addEventListener('click', finalizeProcess);
 }
 
 function buildExportRows(){
@@ -747,8 +831,9 @@ function buildExportRows(){
     Tecnico: state.tecnico || '',
     Regional: state.regional || '',
     Unidade: state.unidade || '',
+    Setor: state.setor || '',
     Fieldtask: state.assinatura || '',
-    Ronda: round ? round.name : '',
+    Ambiente: round ? round.name : '',
     Pergunta: q.text,
     Resposta: state.answers[q.id] || '',
     Observacao: state.answers[`obs_${q.id}`] || ''
@@ -756,19 +841,12 @@ function buildExportRows(){
 }
 
 function getBaseFileName(){
-  const regional = slugify(state.regional || 'regional');
-  const unidade = slugify(state.unidade || 'unidade');
-  const ronda = slugify((getSelectedRound()?.name) || 'ronda');
-  let data = state.dataRonda || '';
-  let dataFormatada = '';
-  if(data && /^\d{4}-\d{2}-\d{2}$/.test(data)){
-    const [ano, mes, dia] = data.split('-');
-    dataFormatada = `${dia}-${mes}-${ano}`;
-  } else {
-    const d = new Date();
-    dataFormatada = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
-  }
-  return `${regional}_${unidade}_${ronda}_${dataFormatada}`;
+  const round = getSelectedRound();
+  const fieldtask = slugify(state.assinatura || 'sem_fieldtask');
+  const regional = slugify(state.regional || 'sem_regional');
+  const unidade = slugify(state.unidade || 'sem_unidade');
+  const ronda = slugify(round ? round.name : 'sem_ronda');
+  return `${fieldtask}_${regional}_${unidade}_${ronda}`;
 }
 
 function exportCSV(){
@@ -800,13 +878,26 @@ function normalizePdfText(value){
     .normalize('NFKC');
 }
 
-function exportPDF(){
+function exportPDF(returnBlob=false){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({unit:'pt', format:'a4'});
   const pageW = doc.internal.pageSize.width;
   const pageH = doc.internal.pageSize.height;
   const margin = 42;
   const round = getSelectedRound();
+
+  function obterDataChecklistFormatada(){
+    let raw = state.dataRonda || '';
+    if(!raw){
+      const el = document.getElementById('dataRonda');
+      if(el && el.value) raw = el.value;
+    }
+    if(raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)){
+      const [a,m,d] = raw.split('-');
+      return `${d}-${m}-${a}`;
+    }
+    return '-';
+  }
 
   function drawPageHeader(){
     doc.setFillColor(8,31,92);
@@ -842,6 +933,17 @@ function exportPDF(){
     doc.setTextColor(22,38,63);
   }
 
+  function ensurePageSpace(currentY, neededHeight){
+    if(currentY + neededHeight > pageH - 54){
+      drawPageFooter(page);
+      doc.addPage();
+      page += 1;
+      drawPageHeader();
+      return 118;
+    }
+    return currentY;
+  }
+
   let page = 1;
   drawPageHeader();
 
@@ -851,82 +953,98 @@ function exportPDF(){
     ['Regional', state.regional || '-'],
     ['Unidade', state.unidade || '-'],
     ['Fieldtask', state.assinatura || '-'],
-    ['Data da ronda', state.dataRonda ? (()=>{const [a,m,d]=state.dataRonda.split('-'); return `${d}-${m}-${a}`;})() : '-'],
-    ['Ronda', round ? round.name : '-'],
+    ['Data do checklist', obterDataChecklistFormatada()],
+    ['SETOR', state.setor || '-'],
+    ['Ambiente', round ? round.name : '-'],
     ['Início', state.startedAt ? new Date(state.startedAt).toLocaleString('pt-BR') : '-']
   ];
 
   const colGap = 12;
   const colW = (pageW - margin*2 - colGap)/2;
-  const rowHeight = 62;
-  meta.forEach((item, idx)=>{
-    const col = idx % 2;
-    const row = Math.floor(idx / 2);
-    const x = margin + col*(colW+colGap);
-    const yy = y + row*rowHeight;
-    const value = doc.splitTextToSize(normalizePdfText(item[1]), colW-24);
-    const boxH = Math.max(48, 22 + (value.length*12) + 10);
-    doc.setFillColor(244,248,253);
-    doc.roundedRect(x, yy, colW, boxH, 8, 8, 'F');
-    doc.setTextColor(8,31,92);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(10);
-    doc.text(item[0], x+12, yy+16);
-    doc.setTextColor(22,38,63);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(11);
-    doc.text(value, x+12, yy+34);
-  });
-  y += Math.ceil(meta.length / 2) * rowHeight + 20;
+  const rowGap = 12;
+
+  for(let i = 0; i < meta.length; i += 2){
+    const rowItems = meta.slice(i, i + 2);
+    const rowHeight = Math.max(...rowItems.map(item => {
+      const valueLines = doc.splitTextToSize(normalizePdfText(item[1]), colW - 24);
+      return Math.max(64, 24 + (valueLines.length * 14) + 18);
+    }));
+
+    y = ensurePageSpace(y, rowHeight + rowGap);
+
+    rowItems.forEach((item, idx) => {
+      const x = margin + idx * (colW + colGap);
+      const valueLines = doc.splitTextToSize(normalizePdfText(item[1]), colW - 24);
+
+      doc.setFillColor(244,248,253);
+      doc.roundedRect(x, y, colW, rowHeight, 8, 8, 'F');
+
+      doc.setTextColor(8,31,92);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(10);
+      doc.text(normalizePdfText(item[0]), x + 12, y + 18);
+
+      doc.setTextColor(22,38,63);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(11);
+      doc.text(valueLines, x + 12, y + 42);
+    });
+
+    y += rowHeight + rowGap;
+  }
+
+  y += 4;
+  y = ensurePageSpace(y, 30);
 
   doc.setTextColor(8,31,92);
   doc.setFont('helvetica','bold');
   doc.setFontSize(13);
   doc.text(normalizePdfText('Respostas da ronda'), margin, y);
-  y += 18;
+  y += 22;
 
   buildExportRows().forEach((row, idx)=>{
     const question = normalizePdfText(`${idx+1}. ${row.Pergunta}`);
     const answer = normalizePdfText(`Resposta: ${row.Resposta || '-'}`);
     const note = row.Observacao ? normalizePdfText(`Observação: ${row.Observacao}`) : '';
+
     const qLines = doc.splitTextToSize(question, pageW - margin*2 - 24);
     const aLines = doc.splitTextToSize(answer, pageW - margin*2 - 24);
     const nLines = note ? doc.splitTextToSize(note, pageW - margin*2 - 24) : [];
-    const blockHeight = 20 + qLines.length*12 + aLines.length*12 + (nLines.length ? 10 + nLines.length*12 : 0) + 12;
 
-    if(y + blockHeight > pageH - 54){
-      drawPageFooter(page);
-      doc.addPage();
-      page += 1;
-      drawPageHeader();
-      y = 118;
-    }
+    const blockHeight = 24 + (qLines.length * 14) + (aLines.length * 14) + (nLines.length ? 10 + (nLines.length * 14) : 0) + 18;
+    y = ensurePageSpace(y, blockHeight + 10);
 
     doc.setFillColor(255,255,255);
     doc.setDrawColor(220,229,240);
     doc.roundedRect(margin, y, pageW - margin*2, blockHeight, 10, 10, 'FD');
 
-    let innerY = y + 18;
+    let innerY = y + 20;
+
     doc.setTextColor(8,31,92);
     doc.setFont('helvetica','bold');
     doc.setFontSize(11);
-    qLines.forEach(line=>{ doc.text(line, margin+12, innerY); innerY += 12; });
+    qLines.forEach(line=>{ doc.text(line, margin+12, innerY); innerY += 14; });
 
     doc.setTextColor(22,38,63);
     doc.setFont('helvetica','normal');
-    aLines.forEach(line=>{ doc.text(line, margin+12, innerY); innerY += 12; });
+    aLines.forEach(line=>{ doc.text(line, margin+12, innerY); innerY += 14; });
 
     if(nLines.length){
-      innerY += 6;
+      innerY += 4;
       doc.setTextColor(14,167,192);
-      nLines.forEach(line=>{ doc.text(line, margin+12, innerY); innerY += 12; });
+      nLines.forEach(line=>{ doc.text(line, margin+12, innerY); innerY += 14; });
     }
 
     y += blockHeight + 10;
   });
 
   drawPageFooter(page);
-  doc.save(`${getBaseFileName()}.pdf`);
+  const fileName = `${getBaseFileName()}.pdf`;
+  if(returnBlob){
+    return { blob: doc.output('blob'), fileName };
+  }
+  doc.save(fileName);
+  return { fileName };
 }
 
 function downloadBlob(blob, filename){
@@ -935,9 +1053,14 @@ function downloadBlob(blob, filename){
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
+function finalizeProcess(){
+  exportPDF(false);
+  setTimeout(()=>resetAll(), 500);
+}
+
 function resetAll(){
   if(!confirm('Deseja apagar todo o processo e voltar para a aba Identificação?')) return;
-  state.tecnico=''; state.regional=''; state.unidade=''; state.assinatura=''; state.dataRonda=''; state.roundId=''; state.answers={}; state.startedAt='';
+  state.tecnico=''; state.regional=''; state.unidade=''; state.assinatura=''; state.dataRonda=''; state.setor=''; state.roundId=''; state.answers={}; state.startedAt='';
   renderScreen1(); renderScreen2(); renderScreen3(); renderScreen4(); showStep(1);
 }
 </script>
